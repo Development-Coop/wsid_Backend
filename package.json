@@ -1,0 +1,29 @@
+{
+  "name": "wsid_backend",
+  "version": "1.0.0",
+  "description": "WSID Backend - Express.js REST API",
+  "main": "app.js",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "prod": "NODE_ENV=production node app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Development-Coop/wsid_Backend.git"
+  },
+  "author": "Durairaj (durairaj.web@gmail.com)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Development-Coop/wsid_Backend/issues"
+  },
+  "homepage": "https://github.com/Development-Coop/wsid_Backend#readme",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase": "^10.13.1",
+    "firebase-admin": "^12.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemon": "^3.1.4"
+  }
+}
