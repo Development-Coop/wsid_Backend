@@ -3,6 +3,7 @@ const db = require('../db/init');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../helper/jwt');
 const messages = require('../constants/messages');
+const { success, error } = require('../model/response');
 
 const register = async (req, res) => {
   try {
@@ -22,9 +23,9 @@ const register = async (req, res) => {
       createdAt: new Date(),
     });
 
-    return res.status(201).json({ message: messages.USER_REGISTERED });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return success(res, [], messages.USER_REGISTERED);
+  } catch (err) {
+    return error(res, err.message, [], 500);
   }
 };
 
@@ -38,24 +39,83 @@ const login = async (req, res) => {
     const userData = userDoc.data();
 
     const isMatch = await bcrypt.compare(password, userData.password);
-    if (!isMatch)
-      return res.status(400).json({ message: messages.INVALID_CREDENTIALS });
+    if (!isMatch) {
+      return error(res, messages.INVALID_CREDENTIALS);
+    }
 
     // Generate JWT token
     const token = generateToken(user);
 
-    return res.json({ token });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return success(res, { token }, messages.LOGIN_SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+// Google Sign-In API (Backend)
+const googleSignIn = async (req, res) => {
+  const { idToken } = req.body; // Frontend will send the Google ID token
+  try {
+    // Verify the ID token using Firebase Admin SDK
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name } = decodedToken; // Extract user info from token
+
+    // Check if user exists in Firestore, if not, create a new user record
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+      // New user, save additional info in Firestore
+      await db.collection('users').doc(uid).set({
+        name,
+        email,
+        createdAt: new Date(),
+      });
+    }
+
+    // Optionally generate JWT for your own backend session
+    // const token = generateToken(uid); // If you use custom tokens
+
+    // Send success response
+    return success(res, { uid, email, name }, 'Google Sign-In successful');
+  } catch (err) {
+    return error(res, 'Invalid Google ID Token', [], 401);
+  }
+};
+
+// Apple Sign-In API (Backend)
+const appleSignIn = async (req, res) => {
+  const { idToken } = req.body; // Frontend sends the Apple ID token
+  try {
+    // Verify the ID token using Firebase Admin SDK
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name } = decodedToken; // Extract user info from token
+
+    // Check if user exists in Firestore, if not, create a new user record
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+      // New user, save additional info in Firestore
+      await db.collection('users').doc(uid).set({
+        name,
+        email,
+        createdAt: new Date(),
+      });
+    }
+
+    // Optionally generate JWT for your own backend session
+    // const token = generateToken(uid); // If you use custom tokens
+
+    // Send success response
+    return success(res, { uid, email, name }, 'Apple Sign-In successful');
+  } catch (err) {
+    return error(res, 'Invalid Apple ID Token', [], 401);
   }
 };
 
 const logout = async (req, res) => {
   try {
-    // Invalidate token if needed (this would be handled by client in most cases)
-    return res.status(200).json({ message: messages.LOGOUT_SUCCESS });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    // Invalidate token if needed (usually handled by the client)
+    return success(res, [], messages.LOGOUT_SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
   }
 };
 
@@ -63,9 +123,9 @@ const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     await admin.auth().generatePasswordResetLink(email);
-    return res.json({ message: messages.PASSWORD_RESET_EMAIL_SENT });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return success(res, [], messages.PASSWORD_RESET_EMAIL_SENT);
+  } catch (err) {
+    return error(res, err.message, [], 500);
   }
 };
 
@@ -73,10 +133,10 @@ const resetPassword = async (req, res) => {
   try {
     const { oobCode, newPassword } = req.body; // oobCode is the password reset code from Firebase
     await admin.auth().confirmPasswordReset(oobCode, newPassword);
-    return res.json({ message: messages.PASSWORD_RESET_SUCCESS });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return success(res, [], messages.PASSWORD_RESET_SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
   }
 };
 
-module.exports = { register, login, logout, forgotPassword, resetPassword };
+module.exports = { register, login, googleSignIn, appleSignIn, logout, forgotPassword, resetPassword };
