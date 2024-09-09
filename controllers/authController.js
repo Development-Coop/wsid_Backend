@@ -2,27 +2,124 @@ const admin = require('firebase-admin');
 const db = require('../db/init');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../helper/jwt');
+const sendOtpToEmail = require('../helper/node_mailer');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 
-const register = async (req, res) => {
+const registerStep1 = async (req, res) => {
+  const { name, email, dateOfBirth } = req.body;
   try {
-    const { email, password, name } = req.body;
+    // Check if the email already exists in the temp_users collection
+    const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
+    let tempUserDocId = null;
+    
+    if (!tempUserSnapshot.empty) {
+      // If email exists, get the document ID to update the record
+      tempUserDocId = tempUserSnapshot.docs[0].id;
+    }
 
-    // Create Firebase Authentication user
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000);
+
+    // If tempUserDocId is found, update the existing document, otherwise create a new one
+    if (tempUserDocId) {
+      await db.collection('temp_users').doc(tempUserDocId).update({
+        name,
+        email,
+        dateOfBirth,
+        otp,
+        updatedAt: new Date(),
+      });
+    } else {
+      await db.collection('temp_users').add({
+        name,
+        email,
+        dateOfBirth,
+        otp,
+        createdAt: new Date(),
+      });
+    }
+
+    // Send OTP to the user's email using any email service (e.g., SendGrid, Nodemailer)
+    //await sendOtpToEmail(email, otp);
+
+    return success(res, [], messages.OTP_SENT);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const registerStep2 = async (req, res) => {
+  const { email, otp } = req.body;
+  try {
+    // Fetch the temporary user from the database
+    const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
+    
+    if (tempUserSnapshot.empty) {
+      return error(res, messages.EMAIL_NOT_FOUND, [], 404);
+    }
+
+    const tempUser = tempUserSnapshot.docs[0].data();
+    
+    // Check if the OTP is already verified
+    /* if (tempUser.otpVerified) {
+      return error(res, messages.EMAIL_ALREADY_VERIFIED, [], 400);
+    } */
+
+    // Check if the OTP matches
+    if (String(tempUser.otp) !== String(otp)) {
+      return error(res, messages.INVALID_OTP, [], 400);
+    }
+
+    // Mark the email as verified
+    await db.collection('temp_users').doc(tempUserSnapshot.docs[0].id).update({ otpVerified: true });
+
+    return success(res, [], messages.EMAIL_VERIFIED);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const registerStep3 = async (req, res) => {
+  const { email, password, username, profilePic, bio } = req.body;
+  try {
+    // Fetch the temporary user
+    const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
+    
+    if (tempUserSnapshot.empty) {
+      return error(res, messages.EMAIL_NOT_FOUND, [], 404);
+    }
+
+    const tempUser = tempUserSnapshot.docs[0].data();
+
+    // Check if the email was verified
+    if (!tempUser.otpVerified) {
+      return error(res, messages.EMAIL_NOT_VERIFIED, [], 400);
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create the user in Firebase Authentication
     const userRecord = await admin.auth().createUser({
       email,
-      password,
-      displayName: name,
+      password: hashedPassword,
+      displayName: username,
     });
 
-    // Store additional user data in Firestore
+    // Save the user data to Firestore
     await db.collection('users').doc(userRecord.uid).set({
-      name,
-      email,
+      name: tempUser.name,
+      email: tempUser.email,
+      dateOfBirth: tempUser.dateOfBirth,
+      username,
+      profilePic,
+      bio,
       createdAt: new Date(),
     });
 
+    // Delete temporary user from `temp_users`
+    await db.collection('temp_users').doc(tempUserSnapshot.docs[0].id).delete();
     return success(res, [], messages.USER_REGISTERED);
   } catch (err) {
     return error(res, err.message, [], 500);
@@ -139,4 +236,14 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, googleSignIn, appleSignIn, logout, forgotPassword, resetPassword };
+module.exports = { 
+  registerStep1,
+  registerStep2,
+  registerStep3,
+  login,
+  googleSignIn,
+  appleSignIn,
+  logout,
+  forgotPassword,
+  resetPassword
+};
