@@ -3,7 +3,8 @@ const db = require('../db/init');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../helper/jwt');
 const { generateOTP } = require('../helper/util');
-const sendOtpToEmail = require('../helper/node_mailer');
+const { sendOtpToEmail } = require('../helper/node_mailer');
+const { uploadFileToFirebase } = require('../helper/firebase_storage');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 
@@ -124,11 +125,11 @@ const registerStep3 = async (req, res) => {
       return error(res, messages.USERNAME_EXIST, [], 400);
     }
 
-    // Handle the file upload here
-    const fs = require('fs');
-    const path = require('path');
-    const uploadPath = path.join(__dirname, '../uploads/', profilePic.originalname);
-    fs.writeFileSync(uploadPath, profilePic.buffer);
+    // Handle profile picture upload if a file is provided
+    let profilePicUrl = null;
+    if (profilePic) {
+      profilePicUrl = await uploadFileToFirebase(profilePic);
+    }
 
     // Or upload to cloud storage (e.g., AWS S3, Google Cloud Storage)
     // Use profilePic.buffer for the file data
@@ -149,7 +150,7 @@ const registerStep3 = async (req, res) => {
       email: tempUser.email,
       dateOfBirth: tempUser.dateOfBirth,
       username,
-      profilePic,
+      profilePicUrl,
       bio,
       createdAt: new Date(),
     });

@@ -6,7 +6,8 @@ admin.initializeApp({
         client_email: process.env.FIREBASE_CLIENT_EMAIL,
         project_id: process.env.FIREBASE_PROJECT_ID
     }),
-    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
+    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
+    storageBucket: process.env.FIREBASE_BUCKET
 });
 
 const db = admin.firestore();

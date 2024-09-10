@@ -57,6 +57,12 @@ JWT_SECRET=your_jwt_secret
 FIREBASE_PROJECT_ID=your_firebase_project_id
 FIREBASE_CLIENT_EMAIL=your_firebase_client_email
 FIREBASE_PRIVATE_KEY="your_firebase_private_key"
+FIREBASE_BUCKET="your_firebase_bucket_name"
+MAX_ALLOWED_OTP_RESENDS=3
+OTP_EXPIRATION_TIME=5
+FROM_EMAIL="your_from_email"
+SMTP_EMAIL="your_smtp_email"
+SMTP_PASSWORD="your_smtp_password"
 ```
 
 Make sure to replace the values with your actual Firebase credentials and configuration.
