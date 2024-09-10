@@ -69,3 +69,4 @@ db/serviceAccountKey.json
 
 # env file
 .env
+uploads/*
