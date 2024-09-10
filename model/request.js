@@ -22,7 +22,7 @@ const registerSchemaStep3 = Joi.object({
       'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
       'string.min': 'Password must be at least 6 characters long',
     }),
-  username: Joi.string().required(),
+  username: Joi.string().min(5).required(),
   profilePic: Joi.any().optional(),
   bio: Joi.string().optional(),
 });
@@ -31,9 +31,14 @@ const resendOtpSchema = Joi.object({
   email: Joi.string().email().required()
 });
 
+const userNameSchema = Joi.object({
+  username: Joi.string().min(5).required()
+});
+
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
   registerSchemaStep3,
-  resendOtpSchema
+  resendOtpSchema,
+  userNameSchema
 };

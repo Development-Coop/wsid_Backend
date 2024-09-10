@@ -9,6 +9,7 @@ module.exports = {
   EMAIL_ALREADY_VERIFIED: 'Email is already verified',
   EMAIL_NOT_VERIFIED: 'Email not verified',
   PROFILE_PICTURE_ERROR: 'Profile picture is required.',
+  USERNAME_AVAILABLE: 'Username available',
   USERNAME_EXIST: 'Username is already taken. Please choose another one.',
   USER_REGISTERED: 'User registered successfully',
   INVALID_CREDENTIALS: 'Invalid credentials',

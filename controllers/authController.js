@@ -207,6 +207,49 @@ const resendOtp = async (req, res) => {
   }
 };
 
+const generateUsernames = async (req, res) => {
+  const { username } = req.body;
+  console.log(username)
+  try {
+    // Check if the base username already exists
+    const existingUser = await db.collection('users').where('username', '==', username).get();
+    console.log(existingUser)
+    if (!existingUser.empty) {
+      // If the username exists, generate suggestions
+      let suggestions = [];
+      
+      // Split the username by the period (.)
+      const usernameParts = username.split('.');
+
+      // Generate a random number (100-999)
+      const randomNumber = Math.floor(100 + Math.random() * 900); // Random number between 100 and 999
+
+      if (usernameParts.length === 2) {
+        const firstName = usernameParts[0];
+        const lastName = usernameParts[1];
+
+        // Suggest format 1: "Doe.Alex123"
+        suggestions.push(`${lastName}.${firstName}${randomNumber}`);
+
+        // Suggest format 2: "123DoeAlex"
+        suggestions.push(`${randomNumber}${lastName}${firstName}`);
+      } else {
+        // If the username doesn't contain a period, generate simple random suggestions
+        suggestions.push(`${username}${randomNumber}`);
+        suggestions.push(`${randomNumber}${username}`);
+      }
+
+      // Return a response indicating the username is already taken and suggest alternatives
+      return success(res, { available: false, suggestions }, messages.USERNAME_EXIST);
+    } else {
+      // If the username doesn't exist, allow the user to proceed
+      return success(res, { available: true }, messages.USERNAME_AVAILABLE);
+    }
+  } catch (err) {
+    return error(res, 'Error checking username availability', [], 500);
+  }
+};
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -322,6 +365,7 @@ module.exports = {
   registerStep2,
   registerStep3,
   resendOtp,
+  generateUsernames,
   login,
   googleSignIn,
   appleSignIn,
