@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const db = require('../db/init');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../helper/jwt');
+const { generateOTP } = require('../helper/util');
 const sendOtpToEmail = require('../helper/node_mailer');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
@@ -9,6 +10,13 @@ const { success, error } = require('../model/response');
 const registerStep1 = async (req, res) => {
   const { name, email, dateOfBirth } = req.body;
   try {
+    // Check if the email already exists in the users collection
+    const userSnapshot = await db.collection('users').where('email', '==', email).get();
+    if (!userSnapshot.empty) {
+      // If email exists, retrun error
+      return error(res, messages.EMAIL_ALREADY_EXIST, [], 400);
+    }
+
     // Check if the email already exists in the temp_users collection
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
     let tempUserDocId = null;
@@ -18,8 +26,8 @@ const registerStep1 = async (req, res) => {
       tempUserDocId = tempUserSnapshot.docs[0].id;
     }
 
-    // Generate a 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000);
+    // Generate a new OTP and update the expiry time
+    const { newOtp, otpExpires } = generateOTP();
 
     // If tempUserDocId is found, update the existing document, otherwise create a new one
     if (tempUserDocId) {
@@ -28,6 +36,8 @@ const registerStep1 = async (req, res) => {
         email,
         dateOfBirth,
         otp,
+        otpExpires,
+        otpSentCount: 1,
         updatedAt: new Date(),
       });
     } else {
@@ -36,12 +46,14 @@ const registerStep1 = async (req, res) => {
         email,
         dateOfBirth,
         otp,
+        otpExpires,
+        otpSentCount: 1,
         createdAt: new Date(),
       });
     }
 
-    // Send OTP to the user's email using any email service (e.g., SendGrid, Nodemailer)
-    //await sendOtpToEmail(email, otp);
+    // Send OTP to the user's email using email service
+    await sendOtpToEmail(email, otp);
 
     return success(res, [], messages.OTP_SENT);
   } catch (err) {
@@ -66,6 +78,12 @@ const registerStep2 = async (req, res) => {
       return error(res, messages.EMAIL_ALREADY_VERIFIED, [], 400);
     } */
 
+    // Validate if OTP has expired
+    const currentTime = new Date();
+    if (currentTime > tempUser.otpExpires) {
+      return error(res, messages.OTP_EXPIRED, [], 400); // OTP expired error
+    }
+
     // Check if the OTP matches
     if (String(tempUser.otp) !== String(otp)) {
       return error(res, messages.INVALID_OTP, [], 400);
@@ -81,8 +99,13 @@ const registerStep2 = async (req, res) => {
 };
 
 const registerStep3 = async (req, res) => {
-  const { email, password, username, profilePic, bio } = req.body;
+  const { email, password, username, bio } = req.body;
+  const profilePic = req.file;
   try {
+    if (!profilePic) {
+      return error(res, messages.PROFILE_PICTURE_ERROR, [], 400);
+    }
+
     // Fetch the temporary user
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
     
@@ -96,6 +119,24 @@ const registerStep3 = async (req, res) => {
     if (!tempUser.otpVerified) {
       return error(res, messages.EMAIL_NOT_VERIFIED, [], 400);
     }
+
+    // Check if the username is unique
+    const userSnapshot = await db.collection('users').where('username', '==', username).get();
+    if (!userSnapshot.empty) {
+      return error(res, 'Username is already taken. Please choose another one.', [], 400);
+    }
+
+    // Handle the file upload here
+    // Example: Save the file to disk (for demonstration purposes)
+    /*
+    const fs = require('fs');
+    const path = require('path');
+    const uploadPath = path.join(__dirname, '../uploads/', profilePic.originalname);
+    fs.writeFileSync(uploadPath, profilePic.buffer);
+    */
+
+    // Or upload to cloud storage (e.g., AWS S3, Google Cloud Storage)
+    // Use profilePic.buffer for the file data
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -123,6 +164,51 @@ const registerStep3 = async (req, res) => {
     return success(res, [], messages.USER_REGISTERED);
   } catch (err) {
     return error(res, err.message, [], 500);
+  }
+};
+
+const resendOtp = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    // Check if the user exists in the temporary collection
+    const userSnapshot = await db.collection('temp_users').where('email', '==', email).get();
+
+    if (userSnapshot.empty) {
+      return error(res, 'Email not found', [], 404);
+    }
+
+    // Get the temp user data (assuming only one result because emails should be unique)
+    const userDoc = userSnapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Check if the user is already verified
+    if (userData.otp_verified) {
+      return error(res, 'Email already verified', [], 400);
+    }
+
+    // Optionally check if the OTP was recently sent and rate-limit the resend requests
+    if (userData.otpSentCount >= process.env.MAX_ALLOWED_OTP_RESENDS) {
+      return error(res, 'Max OTP resend attempts reached. Please try again later.', [], 429);
+    }
+
+    // Generate a new OTP and update the expiry time
+    const { newOtp, otpExpires } = generateOTP();
+
+    // Update the OTP in the database
+    await db.collection('temp_users').doc(userDoc.id).update({
+      otp: newOtp,
+      otpExpires,
+      otpSentCount: (userData.otpSentCount || 0) + 1, // Increment resend count
+    });
+
+    // Send OTP to the user's email using email service
+    await sendOtpToEmail(email, otp);
+
+    // Send success response
+    return success(res, [], messages.OTP_SENT);
+  } catch (err) {
+    return error(res, 'Failed to resend OTP. Please try again later.', [], 500);
   }
 };
 
@@ -240,6 +326,7 @@ module.exports = {
   registerStep1,
   registerStep2,
   registerStep3,
+  resendOtp,
   login,
   googleSignIn,
   appleSignIn,

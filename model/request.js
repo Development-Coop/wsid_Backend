@@ -14,14 +14,26 @@ const registerSchemaStep2 = Joi.object({
 
 const registerSchemaStep3 = Joi.object({
   email: Joi.string().email().required(),
-  password: Joi.string().min(6).required(),
+  password: Joi.string()
+    .min(6)
+    .pattern(new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])'))
+    .required()
+    .messages({
+      'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      'string.min': 'Password must be at least 6 characters long',
+    }),
   username: Joi.string().required(),
-  profilePic: Joi.string().uri().optional(),
+  profilePic: Joi.any().optional(),
   bio: Joi.string().optional(),
+});
+
+const resendOtpSchema = Joi.object({
+  email: Joi.string().email().required()
 });
 
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
-  registerSchemaStep3
+  registerSchemaStep3,
+  resendOtpSchema
 };
