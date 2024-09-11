@@ -53,7 +53,7 @@ const registerStep1 = async (req, res) => {
     }
 
     // Send OTP to the user's email using email service
-    //await sendOtpToEmail(email, otp);
+    await sendOtpToEmail(email, otp);
 
     return success(res, [], messages.OTP_SENT);
   } catch (err) {
@@ -199,7 +199,7 @@ const resendOtp = async (req, res) => {
     });
 
     // Send OTP to the user's email using email service
-    //await sendOtpToEmail(email, otp);
+    await sendOtpToEmail(email, otp);
 
     // Send success response
     return success(res, [], messages.OTP_SENT);
