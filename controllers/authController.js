@@ -131,9 +131,6 @@ const registerStep3 = async (req, res) => {
       profilePicUrl = await uploadFileToFirebase(profilePic);
     }
 
-    // Or upload to cloud storage (e.g., AWS S3, Google Cloud Storage)
-    // Use profilePic.buffer for the file data
-
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -238,6 +235,15 @@ const generateUsernames = async (req, res) => {
         // If the username doesn't contain a period, generate simple random suggestions
         suggestions.push(`${username}${randomNumber}`);
         suggestions.push(`${randomNumber}${username}`);
+      }
+
+      // Check if any of the suggestions already exist in the database
+      const checkedSuggestions = [];
+      for (let suggestion of suggestions) {
+        const suggestionExists = await db.collection('users').where('username', '==', suggestion).get();
+        if (suggestionExists.empty) {
+          checkedSuggestions.push(suggestion); // Add only available suggestions
+        }
       }
 
       // Return a response indicating the username is already taken and suggest alternatives
