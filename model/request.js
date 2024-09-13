@@ -9,7 +9,7 @@ const registerSchemaStep1 = Joi.object({
 
 const registerSchemaStep2 = Joi.object({
   email: Joi.string().email().required(),
-  otp: Joi.string().length(6).required(), // Assuming OTP is 6 digits
+  otp: Joi.string().length(6).required(),
 });
 
 const registerSchemaStep3 = Joi.object({
@@ -60,11 +60,30 @@ const loginSchema = Joi.object({
   password: Joi.string().required()
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
+const resetPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+  otp: Joi.string().length(6).required(),
+  password: Joi.string()
+    .min(6)
+    .pattern(new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])'))
+    .required()
+    .messages({
+      'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      'string.min': 'Password must be at least 6 characters long',
+    })
+});
+
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
   registerSchemaStep3,
   resendOtpSchema,
   userNameSchema,
-  loginSchema
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema
 };

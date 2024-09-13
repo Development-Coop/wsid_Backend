@@ -302,6 +302,82 @@ const login = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    // Invalidate token if needed (usually handled by the client)
+    return success(res, [], messages.LOGOUT_SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body; // input can be either email or username
+
+    const userRecord = await admin.auth().getUserByEmail(email);
+
+    // Generate a new OTP and update the expiry time
+    const { otp, otpExpires } = generateOTP();
+
+    // Save OTP to Firestore (or any database) with an expiration time (e.g., 10 minutes)
+    await db.collection('otp_verifications').doc(userRecord.uid).set({
+      otp,
+      email: userRecord.email,
+      createdAt: new Date(),
+      expiresAt: otpExpires
+    });
+
+    // Send OTP to the user's email using email service
+    await sendOtpToEmail(email, otp);
+
+    return success(res, [], 'OTP sent to your email address.');
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { email, otp, password } = req.body;
+
+  try {
+    // Fetch OTP record from Firestore
+    const otpSnapshot = await db.collection('otp_verifications').where('email', '==', email).get();
+    if (otpSnapshot.empty) {
+      return error(res, 'Invalid OTP or email', [], 400);
+    }
+
+    const otpRecord = otpSnapshot.docs[0].data();
+
+    // Validate if OTP has expired or OTP not matches
+    const currentTime = new Date();
+    const otpExpiresDate = new Date(otpRecord.expiresAt._seconds * 1000);
+    if (String(otpRecord.otp) !== String(otp) || currentTime > otpExpiresDate) {
+      return error(res, 'Invalid OTP or expired', [], 400);
+    }
+
+    // Get the user by email and update the password in Firebase Authentication
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().updateUser(user.uid, {
+      password,
+    });
+
+    // Optionally, update the hashed password in Firestore if you are storing user data there
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await db.collection('users').doc(user.uid).update({
+      password: hashedPassword,
+    });
+
+    // Delete OTP record after successful password reset
+    await db.collection('otp_verifications').doc(otpSnapshot.docs[0].id).delete();
+
+    return success(res, [], 'Password has been updated successfully.');
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+
 // Google Sign-In API (Backend)
 const googleSignIn = async (req, res) => {
   const { idToken } = req.body; // Frontend will send the Google ID token
@@ -360,35 +436,6 @@ const appleSignIn = async (req, res) => {
   }
 };
 
-const logout = async (req, res) => {
-  try {
-    // Invalidate token if needed (usually handled by the client)
-    return success(res, [], messages.LOGOUT_SUCCESS);
-  } catch (err) {
-    return error(res, err.message, [], 500);
-  }
-};
-
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    await admin.auth().generatePasswordResetLink(email);
-    return success(res, [], messages.PASSWORD_RESET_EMAIL_SENT);
-  } catch (err) {
-    return error(res, err.message, [], 500);
-  }
-};
-
-const resetPassword = async (req, res) => {
-  try {
-    const { oobCode, newPassword } = req.body; // oobCode is the password reset code from Firebase
-    await admin.auth().confirmPasswordReset(oobCode, newPassword);
-    return success(res, [], messages.PASSWORD_RESET_SUCCESS);
-  } catch (err) {
-    return error(res, err.message, [], 500);
-  }
-};
-
 module.exports = { 
   registerStep1,
   registerStep2,
@@ -396,9 +443,9 @@ module.exports = {
   resendOtp,
   generateUsernames,
   login,
-  googleSignIn,
-  appleSignIn,
   logout,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  googleSignIn,
+  appleSignIn
 };

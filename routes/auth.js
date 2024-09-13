@@ -20,7 +20,9 @@ const {
   registerSchemaStep3,
   resendOtpSchema,
   userNameSchema,
-  loginSchema
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema
 } = require('../model/request');
 const router = express.Router();
 
@@ -31,8 +33,8 @@ router.post('/resend-otp', validateRequest(resendOtpSchema), resendOtp);
 router.post('/username-suggestions', validateRequest(userNameSchema), generateUsernames);
 router.post('/login', validateRequest(loginSchema), login);
 router.post('/logout', logout);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
+router.post('/forgot-password', validateRequest(forgotPasswordSchema), forgotPassword);
+router.post('/reset-password', validateRequest(resetPasswordSchema), resetPassword);
 
 router.post('/login-with-google', googleSignIn);
 router.post('/login-with-apple', appleSignIn);
