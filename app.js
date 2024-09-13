@@ -7,6 +7,10 @@ const app = express();
 // Middleware
 app.use(express.json()); // To handle JSON request bodies
 
+app.use('/', (req, res) => {
+  res.send('Welcome to WSID REST API!');
+});
+
 // Routes
 app.use('/api', routes);
 
