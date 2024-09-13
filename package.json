@@ -4,6 +4,8 @@
   "description": "WSID Backend - Express.js REST API",
   "main": "app.js",
   "scripts": {
+    "build": "npm install",
+    "start": "node index.js",
     "dev": "nodemon app.js",
     "prod": "NODE_ENV=production node app.js"
   },
@@ -27,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.15",
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "serverless-http": "^3.2.0"
   }
 }
