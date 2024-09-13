@@ -19,7 +19,8 @@ const {
   registerSchemaStep2,
   registerSchemaStep3,
   resendOtpSchema,
-  userNameSchema
+  userNameSchema,
+  loginSchema
 } = require('../model/request');
 const router = express.Router();
 
@@ -28,12 +29,12 @@ router.post('/register-step2', validateRequest(registerSchemaStep2), registerSte
 router.post('/register-step3', uploadValidator, validateRequest(registerSchemaStep3), registerStep3);
 router.post('/resend-otp', validateRequest(resendOtpSchema), resendOtp);
 router.post('/username-suggestions', validateRequest(userNameSchema), generateUsernames);
-
-router.post('/login', login);
-router.post('/login-with-google', googleSignIn);
-router.post('/login-with-apple', appleSignIn);
+router.post('/login', validateRequest(loginSchema), login);
 router.post('/logout', logout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+
+router.post('/login-with-google', googleSignIn);
+router.post('/login-with-apple', appleSignIn);
 
 module.exports = router;

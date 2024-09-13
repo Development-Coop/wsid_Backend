@@ -137,7 +137,7 @@ const registerStep3 = async (req, res) => {
     // Create the user in Firebase Authentication
     const userRecord = await admin.auth().createUser({
       email,
-      password: hashedPassword,
+      password,
       displayName: username,
     });
 
@@ -149,6 +149,7 @@ const registerStep3 = async (req, res) => {
       username,
       profilePicUrl,
       bio,
+      password: hashedPassword,
       createdAt: new Date(),
     });
 
@@ -211,7 +212,6 @@ const generateUsernames = async (req, res) => {
   try {
     // Check if the base username already exists
     const existingUser = await db.collection('users').where('username', '==', username).get();
-    console.log(existingUser)
     if (!existingUser.empty) {
       // If the username exists, generate suggestions
       let suggestions = [];
@@ -231,23 +231,27 @@ const generateUsernames = async (req, res) => {
 
         // Suggest format 2: "123DoeAlex"
         suggestions.push(`${randomNumber}${lastName}${firstName}`);
-      } else {
-        // If the username doesn't contain a period, generate simple random suggestions
-        suggestions.push(`${username}${randomNumber}`);
-        suggestions.push(`${randomNumber}${username}`);
       }
+      suggestions.push(`${username}${randomNumber}`);
+      suggestions.push(`${randomNumber}${username}`);
+      suggestions.push(`${username}1`);
+      suggestions.push(`${username}2`);
+      suggestions.push(`${username}3`);
 
       // Check if any of the suggestions already exist in the database
       const checkedSuggestions = [];
-      for (let suggestion of suggestions) {
-        const suggestionExists = await db.collection('users').where('username', '==', suggestion).get();
-        if (suggestionExists.empty) {
-          checkedSuggestions.push(suggestion); // Add only available suggestions
-        }
-      }
+
+      // Query Firestore to find any existing usernames in the suggestions list
+      const snapshot = await db.collection('users').where('username', 'in', suggestions).get();
+      const existingUsernames = snapshot.docs.map(doc => doc.data().username);
+
+      // Filter out existing suggestions
+      const availableSuggestions = suggestions.filter(suggestion => !existingUsernames.includes(suggestion));
+
+      checkedSuggestions.push(...availableSuggestions);
 
       // Return a response indicating the username is already taken and suggest alternatives
-      return success(res, { available: false, suggestions }, messages.USERNAME_EXIST);
+      return success(res, { available: false, suggestions: checkedSuggestions.slice(0, 3) }, messages.USERNAME_EXIST);
     } else {
       // If the username doesn't exist, allow the user to proceed
       return success(res, { available: true }, messages.USERNAME_AVAILABLE);
@@ -259,8 +263,26 @@ const generateUsernames = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await admin.auth().getUserByEmail(email);
+    const { emailOrUsername, password } = req.body;
+    let user;
+
+    if (emailOrUsername.includes('@')) {
+      // It's an email
+      user = await admin.auth().getUserByEmail(emailOrUsername);
+    } else {
+      // It's a username, query Firestore to get the user by username
+      const userSnapshot = await db.collection('users').where('username', '==', emailOrUsername).get();
+      
+      if (userSnapshot.empty) {
+        return error(res, messages.INVALID_CREDENTIALS);
+      }
+
+      const userDoc = userSnapshot.docs[0];
+      const userData = userDoc.data();
+      
+      // Fetch the user by their UID
+      user = await admin.auth().getUser(userDoc.id);
+    }
 
     // Check password (assuming you saved password hashes)
     const userDoc = await db.collection('users').doc(user.uid).get();
