@@ -202,7 +202,7 @@ const resendOtp = async (req, res) => {
     // Send success response
     return success(res, [], messages.OTP_SENT);
   } catch (err) {
-    return error(res, 'Failed to resend OTP. Please try again later.', [], 500);
+    return error(res, messages.FAILED_OTP, [], 500);
   }
 };
 
@@ -257,7 +257,7 @@ const generateUsernames = async (req, res) => {
       return success(res, { available: true }, messages.USERNAME_AVAILABLE);
     }
   } catch (err) {
-    return error(res, 'Error checking username availability', [], 500);
+    return error(res, messages.USERNAME_AVAILABILITY_ERROR, [], 500);
   }
 };
 
@@ -331,7 +331,7 @@ const forgotPassword = async (req, res) => {
     // Send OTP to the user's email using email service
     await sendOtpToEmail(email, otp);
 
-    return success(res, [], 'OTP sent to your email address.');
+    return success(res, [], messages.OTP_SENT);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -344,7 +344,7 @@ const resetPassword = async (req, res) => {
     // Fetch OTP record from Firestore
     const otpSnapshot = await db.collection('otp_verifications').where('email', '==', email).get();
     if (otpSnapshot.empty) {
-      return error(res, 'Invalid OTP or email', [], 400);
+      return error(res, messages.INVALID_OTP_OR_EMAIL, [], 400);
     }
 
     const otpRecord = otpSnapshot.docs[0].data();
@@ -353,7 +353,7 @@ const resetPassword = async (req, res) => {
     const currentTime = new Date();
     const otpExpiresDate = new Date(otpRecord.expiresAt._seconds * 1000);
     if (String(otpRecord.otp) !== String(otp) || currentTime > otpExpiresDate) {
-      return error(res, 'Invalid OTP or expired', [], 400);
+      return error(res, messages.INVALID_OTP_OR_EXPIRED, [], 400);
     }
 
     // Get the user by email and update the password in Firebase Authentication
@@ -371,7 +371,7 @@ const resetPassword = async (req, res) => {
     // Delete OTP record after successful password reset
     await db.collection('otp_verifications').doc(otpSnapshot.docs[0].id).delete();
 
-    return success(res, [], 'Password has been updated successfully.');
+    return success(res, [], PASSWORD_UPDATE_SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -397,13 +397,13 @@ const googleSignIn = async (req, res) => {
       });
     }
 
-    // Optionally generate JWT for your own backend session
-    // const token = generateToken(uid); // If you use custom tokens
+    // generate JWT for backend session
+    const token = generateToken({uid, email});
 
     // Send success response
-    return success(res, { uid, email, name }, 'Google Sign-In successful');
+    return success(res, { token }, messages.GOOGLE_SIGNIN_SUCCESS);
   } catch (err) {
-    return error(res, 'Invalid Google ID Token', [], 401);
+    return error(res, messages.GOOGLE_SIGNIN_FAILED, [], 401);
   }
 };
 
@@ -426,13 +426,13 @@ const appleSignIn = async (req, res) => {
       });
     }
 
-    // Optionally generate JWT for your own backend session
-    // const token = generateToken(uid); // If you use custom tokens
+    // generate JWT for backend session
+    const token = generateToken({uid, email});
 
     // Send success response
-    return success(res, { uid, email, name }, 'Apple Sign-In successful');
+    return success(res, { token }, messages.APPLE_SIGNIN_SUCCESS);
   } catch (err) {
-    return error(res, 'Invalid Apple ID Token', [], 401);
+    return error(res, messages.APPLE_SIGNIN_FAILED, [], 401);
   }
 };
 

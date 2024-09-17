@@ -77,6 +77,10 @@ const resetPasswordSchema = Joi.object({
     })
 });
 
+const trendingSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
@@ -85,5 +89,6 @@ module.exports = {
   userNameSchema,
   loginSchema,
   forgotPasswordSchema,
-  resetPasswordSchema
+  resetPasswordSchema,
+  trendingSchema
 };
