@@ -7,12 +7,12 @@ const app = express();
 // Middleware
 app.use(express.json()); // To handle JSON request bodies
 
+// Routes
+app.use('/api', routes);
+
 app.use('/', (req, res) => {
   res.send('Welcome to WSID REST API!');
 });
-
-// Routes
-app.use('/api', routes);
 
 // Export the app wrapped in serverless-http
 module.exports.handler = serverless(app);

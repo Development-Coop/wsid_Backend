@@ -1,6 +1,7 @@
 // Generic validation middleware for request bodies
 const validateRequest = (schema) => (req, res, next) => {
-  const { error } = schema.validate(req.body, { abortEarly: false });
+  const dataToValidate = req.method === 'GET' ? req.query : req.body;
+  const { error } = schema.validate(dataToValidate, { abortEarly: false });
   if (error) {
     // Map over error.details to get all validation messages
     const errorMessages = error.details.map((detail) => detail.message);
