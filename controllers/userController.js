@@ -31,7 +31,7 @@ const editProfile = async (req, res) => {
     // Fetch the current user document from Firestore
     const userDoc = await db.collection('users').doc(uid).get();
     if (!userDoc.exists) {
-      return error(res, messages.USER_NOT_FOUND, [], 500);
+      return error(res, messages.USER_NOT_FOUND, [], 404);
     }
 
     // Prepare updated data
@@ -65,13 +65,66 @@ const editProfile = async (req, res) => {
     // Update the user document in Firestore
     await db.collection('users').doc(uid).update(updatedData);
 
-    return success(res, {}, messages.PROFILE_UPDATE);
+    return success(res, {}, messages.SUCCESS);
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
+const viewProfile = async (req, res) => {
+  const { userId } = req.params;
+  try {
+    // Fetch the user's profile details
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
+
+    const userData = userDoc.data();
+    const createdAt = new Date(userData.createdAt._seconds * 1000 + userData.createdAt._nanoseconds / 1000000).toISOString();
+
+    // Fetch the count of likes on this user's profile
+    //const likeSnapshot = await db.collection('likes')
+    //  .where('targetUserId', '==', userId)
+    //  .get();
+    //const likesCount = likeSnapshot.size;
+
+    // Fetch the count of followers
+    //const followersSnapshot = await db.collection('followers')
+    //  .where('followingId', '==', userId)
+    //  .get();
+    //const followersCount = followersSnapshot.size;
+
+    // Fetch the count of following (people the user is following)
+    //const followingSnapshot = await db.collection('followers')
+    //  .where('followerId', '==', userId)
+    //  .get();
+    //const followingCount = followingSnapshot.size;
+
+    // Return the profile details along with likes, followers, and following count
+    data = {
+      user: {
+        id: userDoc.id,
+        name: userData.name,
+        email: userDoc.email,
+        dateOfBirth: userData.dateOfBirth,
+        username: userData.username,
+        profilePic: userData.profilePicUrl,
+        bio: userData.bio,
+        createdAt,
+      },
+      //likesCount,
+      //followersCount,
+      //followingCount,
+    }
+    return success(res, data, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 module.exports = { 
   trendingUserList,
-  editProfile
+  editProfile,
+  viewProfile
 };

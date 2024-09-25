@@ -1,7 +1,8 @@
 const express = require('express');
 const {
   trendingUserList,
-  editProfile
+  editProfile,
+  viewProfile
 } = require('../controllers/userController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -13,5 +14,6 @@ const router = express.Router();
 
 router.get('/trending', authenticateJWT, trendingUserList);
 router.post('/edit', authenticateJWT, uploadValidator, validateRequest(editProfileSchema), editProfile);
+router.get('/view/:userId', authenticateJWT, viewProfile);
 
 module.exports = router;
