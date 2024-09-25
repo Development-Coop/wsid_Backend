@@ -11,6 +11,7 @@ const {
   logout,
   forgotPassword,
   resetPassword,
+  refreshAccessToken
 } = require('../controllers/authController');
 const validateRequest = require('../helper/validator');
 const uploadValidator = require('../helper/multer');
@@ -22,7 +23,8 @@ const {
   userNameSchema,
   loginSchema,
   forgotPasswordSchema,
-  resetPasswordSchema
+  resetPasswordSchema,
+  refreshAccessTokenSchema
 } = require('../model/request');
 const router = express.Router();
 
@@ -35,8 +37,8 @@ router.post('/login', validateRequest(loginSchema), login);
 router.post('/logout', logout);
 router.post('/forgot-password', validateRequest(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validateRequest(resetPasswordSchema), resetPassword);
-
 router.post('/login-with-google', googleSignIn);
 router.post('/login-with-apple', appleSignIn);
+router.post('/refresh-token', validateRequest(refreshAccessTokenSchema), refreshAccessToken);
 
 module.exports = router;

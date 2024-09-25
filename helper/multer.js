@@ -24,10 +24,8 @@ const uploadValidator = (req, res, next) => {
   upload(req, res, function (err) {
     if (err instanceof multer.MulterError) {
       // Multer-specific errors
-      console.log('===here')
       return error(res, err.message, [], 400);
     } else if (err) {
-        console.log('===here===1')
       // Other errors (e.g., invalid MIME type)
       return error(res, err.message, [], 400);
     }

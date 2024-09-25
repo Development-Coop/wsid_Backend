@@ -77,8 +77,34 @@ const resetPasswordSchema = Joi.object({
     })
 });
 
-const trendingSchema = Joi.object({
-  email: Joi.string().email().required()
+const refreshAccessTokenSchema = Joi.object({
+  refreshToken: Joi.string().required()
+});
+
+const editProfileSchema = Joi.object({
+  name: Joi.string().optional(),
+  dateOfBirth: Joi.date().optional(),
+  password: Joi.string()
+    .min(6)
+    .pattern(new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])'))
+    .optional()
+    .messages({
+      'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      'string.min': 'Password must be at least 6 characters long',
+    }),
+  username: Joi.string()
+    .min(3)
+    .max(15)
+    .pattern(/^[a-zA-Z0-9](?!.*[._-]{2})[a-zA-Z0-9._-]{1,13}[a-zA-Z0-9]$/)
+    .optional()
+    .messages({
+      'string.min': 'Username must be at least 3 characters long.',
+      'string.max': 'Username cannot exceed 15 characters.',
+      'string.pattern.base': 'Username can only contain letters, numbers, underscores, hyphens, and periods, and must not have consecutive special characters or start/end with a special character.',
+      'any.required': 'Username is required.'
+    }),
+  profilePic: Joi.any().optional(),
+  bio: Joi.string().optional()
 });
 
 module.exports = {
@@ -90,5 +116,6 @@ module.exports = {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  trendingSchema
+  refreshAccessTokenSchema,
+  editProfileSchema
 };

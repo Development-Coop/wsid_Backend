@@ -1,7 +1,7 @@
 const admin = require('firebase-admin');
 const db = require('../db/init');
 const bcrypt = require('bcryptjs');
-const { generateToken } = require('../helper/jwt');
+const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../helper/jwt');
 const { generateOTP } = require('../helper/util');
 const { sendOtpToEmail } = require('../helper/node_mailer');
 const { uploadFileToFirebase } = require('../helper/firebase_storage');
@@ -153,9 +153,29 @@ const registerStep3 = async (req, res) => {
       createdAt: new Date(),
     });
 
+    // Generate accessToken
+    const accessToken = generateToken({
+      uid: userRecord.uid,
+      email: userRecord.email,
+    });
+
+    // Generate refreshToken
+    const refreshToken = generateRefreshToken({
+      uid: userRecord.uid,
+      email: userRecord.email,
+    });
+
+    // Save the refresh token
+    await db.collection('refresh_tokens').add({
+      refreshToken,
+      userId: userRecord.uid,
+      createdAt: new Date(),
+    });
+
     // Delete temporary user from `temp_users`
     await db.collection('temp_users').doc(tempUserSnapshot.docs[0].id).delete();
-    return success(res, [], messages.USER_REGISTERED);
+
+    return success(res, { accessToken, refreshToken }, messages.USER_REGISTERED);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -293,10 +313,18 @@ const login = async (req, res) => {
       return error(res, messages.INVALID_CREDENTIALS);
     }
 
-    // Generate JWT token
-    const token = generateToken(user);
+    // Generate accessToken and refreshToken
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
 
-    return success(res, { token }, messages.LOGIN_SUCCESS);
+    // Save the refresh token
+    await db.collection('refresh_tokens').add({
+      refreshToken,
+      userId: user.uid,
+      createdAt: new Date(),
+    });
+
+    return success(res, { accessToken, refreshToken }, messages.LOGIN_SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -397,11 +425,19 @@ const googleSignIn = async (req, res) => {
       });
     }
 
-    // generate JWT for backend session
-    const token = generateToken({uid, email});
+    // generate accessToken and refreshToken for backend session
+    const accessToken = generateToken({uid, email});
+    const refreshToken = generateRefreshToken({uid, email});
+
+    // Save the refresh token
+    await db.collection('refresh_tokens').add({
+      refreshToken,
+      userId: uid,
+      createdAt: new Date(),
+    });
 
     // Send success response
-    return success(res, { token }, messages.GOOGLE_SIGNIN_SUCCESS);
+    return success(res, { accessToken, refreshToken }, messages.GOOGLE_SIGNIN_SUCCESS);
   } catch (err) {
     return error(res, messages.GOOGLE_SIGNIN_FAILED, [], 401);
   }
@@ -426,13 +462,53 @@ const appleSignIn = async (req, res) => {
       });
     }
 
-    // generate JWT for backend session
-    const token = generateToken({uid, email});
+    // generate accessToken and refreshToken for backend session
+    const accessToken = generateToken({uid, email});
+    const refreshToken = generateRefreshToken({uid, email});
+
+    // Save the refresh token
+    await db.collection('refresh_tokens').add({
+      refreshToken,
+      userId: uid,
+      createdAt: new Date(),
+    });
 
     // Send success response
     return success(res, { token }, messages.APPLE_SIGNIN_SUCCESS);
   } catch (err) {
     return error(res, messages.APPLE_SIGNIN_FAILED, [], 401);
+  }
+};
+
+const refreshAccessToken = async (req, res) => {
+  const { refreshToken } = req.body;
+  try {
+    // Verify the refresh token
+    const decoded = verifyRefreshToken(refreshToken);
+
+    // Check if the refresh token is in the database
+    const tokenDoc = await db.collection('refresh_tokens').where('refreshToken', '==', refreshToken).get();
+
+    if (tokenDoc.empty) {
+      return error(res, messages.INVALID_REFRESH_TOKEN, [], 403);
+    }
+
+    // Generate a new access token
+    const accessToken = generateToken({
+      uid: decoded.uid,
+      email: decoded.email
+    });
+
+    // Send the new access token
+    return res.json({ accessToken });
+  } catch (err) {
+    // Handle expired refresh token case
+    if (err.name === 'TokenExpiredError') {
+      return error(res, messages.REFRESH_TOKEN_ERROR, [], 401);
+      
+    }
+
+    return error(res, messages.EXPIRED_REFRESH_TOKEN, [], 403);
   }
 };
 
@@ -447,5 +523,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   googleSignIn,
-  appleSignIn
+  appleSignIn,
+  refreshAccessToken
 };
