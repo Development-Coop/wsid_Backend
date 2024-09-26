@@ -1,8 +1,12 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const serverless = require('serverless-http');
 const routes = require('./routes/index');
 const app = express();
+
+// Enable CORS for all routes
+app.use(cors());
 
 // Middleware
 app.use(express.json()); // To handle JSON request bodies
