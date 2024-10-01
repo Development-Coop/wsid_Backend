@@ -399,7 +399,7 @@ const resetPassword = async (req, res) => {
     // Delete OTP record after successful password reset
     await db.collection('otp_verifications').doc(otpSnapshot.docs[0].id).delete();
 
-    return success(res, [], PASSWORD_UPDATE_SUCCESS);
+    return success(res, [], messages.PASSWORD_UPDATE_SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
