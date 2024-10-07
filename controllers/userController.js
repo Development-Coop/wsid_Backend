@@ -72,10 +72,10 @@ const editProfile = async (req, res) => {
 };
 
 const viewProfile = async (req, res) => {
-  const { userId } = req.params;
+  const uid = req.query.uid || req.user.uid;
   try {
     // Fetch the user's profile details
-    const userDoc = await db.collection('users').doc(userId).get();
+    const userDoc = await db.collection('users').doc(uid).get();
     if (!userDoc.exists) {
       return error(res, messages.USER_NOT_FOUND, [], 404);
     }
@@ -84,22 +84,22 @@ const viewProfile = async (req, res) => {
     const createdAt = new Date(userData.createdAt._seconds * 1000 + userData.createdAt._nanoseconds / 1000000).toISOString();
 
     // Fetch the count of likes on this user's profile
-    //const likeSnapshot = await db.collection('likes')
-    //  .where('targetUserId', '==', userId)
-    //  .get();
-    //const likesCount = likeSnapshot.size;
+    const likeSnapshot = await db.collection('likes')
+      .where('targetUserId', '==', uid)
+      .get();
+    const likesCount = likeSnapshot.size;
 
     // Fetch the count of followers
-    //const followersSnapshot = await db.collection('followers')
-    //  .where('followingId', '==', userId)
-    //  .get();
-    //const followersCount = followersSnapshot.size;
+    const followersSnapshot = await db.collection('followers')
+      .where('followingId', '==', uid)
+      .get();
+    const followersCount = followersSnapshot.size;
 
     // Fetch the count of following (people the user is following)
-    //const followingSnapshot = await db.collection('followers')
-    //  .where('followerId', '==', userId)
-    //  .get();
-    //const followingCount = followingSnapshot.size;
+    const followingSnapshot = await db.collection('followers')
+      .where('followerId', '==', uid)
+      .get();
+    const followingCount = followingSnapshot.size;
 
     // Return the profile details along with likes, followers, and following count
     data = {
@@ -113,11 +113,85 @@ const viewProfile = async (req, res) => {
         bio: userData.bio,
         createdAt,
       },
-      //likesCount,
-      //followersCount,
-      //followingCount,
+      likesCount,
+      followersCount,
+      followingCount,
     }
     return success(res, data, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const likeProfile = async (req, res) => {
+  const { targetUserId } = req.body;
+
+  try {
+    const { uid } = req.user;
+
+    // Check if the target profile exists
+    const userDoc = await db.collection('users').doc(targetUserId).get();
+    if (!userDoc.exists) {
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
+
+    // Check if the user has already liked the profile
+    const likeSnapshot = await db.collection('likes')
+      .where('userId', '==', uid)
+      .where('targetUserId', '==', targetUserId)
+      .get();
+
+    if (likeSnapshot.empty) {
+      // Like the profile
+      await db.collection('likes').add({
+        userId: uid,
+        targetUserId,
+        likedAt: new Date(),
+      });
+      return success(res, {}, messages.SUCCESS);
+    } else {
+      // Unlike the profile if already liked
+      const likeDocId = likeSnapshot.docs[0].id;
+      await db.collection('likes').doc(likeDocId).delete();
+      return success(res, {}, messages.SUCCESS);
+    }
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const followProfile = async (req, res) => {
+  const { targetUserId } = req.body;
+
+  try {
+    const { uid } = req.user;
+
+    // Check if the target profile exists
+    const userDoc = await db.collection('users').doc(targetUserId).get();
+    if (!userDoc.exists) {
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
+
+    // Check if the user is already following the profile
+    const followSnapshot = await db.collection('followers')
+      .where('followerId', '==', uid)
+      .where('followingId', '==', targetUserId)
+      .get();
+
+    if (followSnapshot.empty) {
+      // Follow the profile
+      await db.collection('followers').add({
+        followerId: uid,
+        followingId: targetUserId,
+        followedAt: new Date(),
+      });
+      return success(res, {}, messages.SUCCESS);
+    } else {
+      // Unfollow the profile if already following
+      const followDocId = followSnapshot.docs[0].id;
+      await db.collection('followers').doc(followDocId).delete();
+      return success(res, {}, messages.SUCCESS);
+    }
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -126,5 +200,7 @@ const viewProfile = async (req, res) => {
 module.exports = { 
   trendingUserList,
   editProfile,
-  viewProfile
+  viewProfile,
+  likeProfile,
+  followProfile
 };
