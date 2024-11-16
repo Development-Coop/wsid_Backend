@@ -128,7 +128,7 @@ const registerStep3 = async (req, res) => {
     // Handle profile picture upload if a file is provided
     let profilePicUrl = null;
     if (profilePic) {
-      profilePicUrl = await uploadFileToFirebase(profilePic);
+      profilePicUrl = await uploadFileToFirebase('user', profilePic);
     }
 
     // Hash the password

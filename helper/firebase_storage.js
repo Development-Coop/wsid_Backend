@@ -4,18 +4,18 @@ const path = require('path');
 // Initialize Firebase Admin SDK if not done already
 const bucket = admin.storage().bucket();
 
-const uploadFileToFirebase = async (userFile) => {
+const uploadFileToFirebase = async (filePath, fileSrc) => {
     try {
       // Create a unique file name if needed (optional)
-      const fileName = `profile/${Date.now()}${path.extname(userFile.originalname)}`;
+      const fileName = `${filePath}/${Date.now()}${path.extname(fileSrc.originalname)}`;
       
       // Create a file reference in Firebase Storage
       const fileRef = bucket.file(fileName);
       
       // Upload file buffer to Firebase Storage
-      await fileRef.save(userFile.buffer, {
+      await fileRef.save(fileSrc.buffer, {
         metadata: {
-          contentType: userFile.mimetype,
+          contentType: fileSrc.mimetype,
         },
       });
   

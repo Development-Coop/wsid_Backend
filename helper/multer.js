@@ -10,18 +10,26 @@ const upload = multer({
   limits: { fileSize: 6 * 1024 * 1024 }, // Max file size: 6MB
   fileFilter: (req, file, cb) => {
     const allowedMimeTypes = ['image/jpeg', 'image/png'];
-
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true); // Accept the file
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed!'), false);
+      cb(new Error('Invalid file type. Only JPEG and PNG are allowed!'), false);
     }
   },
-}).single('profilePic'); // 'profilePic' is the field name in the form data
+});
 
-// Middleware function to validate file size and MIME type
-const uploadValidator = (req, res, next) => {
-  upload(req, res, function (err) {
+/**
+ * Middleware to handle file upload validation
+ * @param {string} fieldName - The name of the form field
+ * @param {boolean} isMultiple - Whether the field accepts multiple files
+ * @returns {function} - Middleware function
+ */
+const uploadValidator = (fieldName, isMultiple = false) => (req, res, next) => {
+  const uploader = isMultiple
+    ? upload.array(fieldName) // Multiple file upload
+    : upload.single(fieldName); // Single file upload
+
+  uploader(req, res, function (err) {
     if (err instanceof multer.MulterError) {
       // Multer-specific errors
       return error(res, err.message, [], 400);

@@ -15,7 +15,7 @@ const {
 const router = express.Router();
 
 router.get('/trending', authenticateJWT, trendingUserList);
-router.post('/edit', authenticateJWT, uploadValidator, validateRequest(editProfileSchema), editProfile);
+router.post('/edit', authenticateJWT, uploadValidator('profilePic'), validateRequest(editProfileSchema), editProfile);
 router.get('/view', authenticateJWT, viewProfile);
 router.post('/like', authenticateJWT, likeProfile);
 router.post('/follow', authenticateJWT, followProfile);

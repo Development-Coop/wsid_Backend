@@ -5,7 +5,7 @@ const {
     getPostById,
     updatePost,
     deletePost 
-} = require('./postController');
+} = require('./../controllers/postController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
 const uploadValidator = require('../helper/multer');
@@ -14,10 +14,10 @@ const {
 } = require('../model/request');
 const router = express.Router();
 
-router.post('/posts', authenticateJWT, uploadValidator, createPost);
-router.get('/posts', authenticateJWT, getPosts);
-router.get('/posts/:id', authenticateJWT, getPostById);
-router.put('/posts/:id', authenticateJWT, uploadValidator, updatePost);
-router.delete('/posts/:id', authenticateJWT, deletePost);
+router.post('/create', authenticateJWT, uploadValidator('postImages', true), createPost);
+router.get('/get', authenticateJWT, getPosts);
+router.get('/get/:id', authenticateJWT, getPostById);
+router.put('/update/:id', authenticateJWT, uploadValidator('postImages', true), updatePost);
+router.delete('/delete/:id', authenticateJWT, deletePost);
 
 module.exports = router;

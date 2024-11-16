@@ -4,27 +4,47 @@ const { success, error } = require('../model/response');
 const { uploadFileToFirebase } = require('../helper/firebase_storage');
 
 const createPost = async (req, res) => {
-  const { title, description, tags } = req.body;
-  const images = req.files; // Assume multiple images are uploaded
+  const { title, description, options: rawOptions } = req.body;
 
   try {
-    // Upload images to Firebase
-    const imageUrls = [];
-    if (images && images.length > 0) {
-      for (const image of images) {
-        const imageUrl = await uploadFileToFirebase(image);
-        imageUrls.push(imageUrl);
-      }
-    }
+    // Parse options JSON from the request body
+    const options = rawOptions ? JSON.parse(rawOptions) : [];
 
+    // Separate `postImages` from `options` images
+    const postImages = req.files.filter(file => file.fieldname === 'postImages');
+   // const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.name));
+
+    // Upload post images
+    const postImageUrls = [];
+    for (const image of postImages) {
+      const imageUrl = await uploadFileToFirebase('post', image);
+      postImageUrls.push(imageUrl);
+    } 
+console.log(options)
+    // Upload option images and enrich options with URLs
+    const updatedOptions = options.map((option) => {
+      //const optionImage = optionImages.find(file => file.fieldname === option.name);
+      let optionImageUrl = null;
+
+      //if (optionImage) {
+      //  optionImageUrl = await uploadFileToFirebase('post/options', optionImage);
+      //}
+
+      return {
+        ...option,
+        image: optionImageUrl, // Add single image URL to each option
+      };
+    });
+    console.log(updatedOptions)
+    // Prepare the new post object
     const newPost = {
       title,
       description,
-      images: imageUrls,
-      tags: tags || [], // Optional tags
+      images: postImageUrls,
+      options: updatedOptions,
       createdAt: new Date(),
     };
-
+console.log(JSON.stringify(newPost))
     // Save to Firestore
     const postRef = await db.collection('posts').add(newPost);
     return res.status(201).json({ id: postRef.id, ...newPost });

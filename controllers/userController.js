@@ -44,7 +44,7 @@ const editProfile = async (req, res) => {
 
     // Handle profile picture update
     if (profilePic) {
-      const profilePicUrl = await uploadFileToFirebase(profilePic);
+      const profilePicUrl = await uploadFileToFirebase('user', profilePic);
       updatedData.profilePicUrl = profilePicUrl;
     }
 
