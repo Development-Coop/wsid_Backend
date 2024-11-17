@@ -12,7 +12,7 @@ const createPost = async (req, res) => {
 
     // Separate `postImages` from `options` images
     const postImages = req.files.filter(file => file.fieldname === 'postImages');
-   // const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.name));
+    const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.text));
 
     // Upload post images
     const postImageUrls = [];
@@ -20,46 +20,62 @@ const createPost = async (req, res) => {
       const imageUrl = await uploadFileToFirebase('post', image);
       postImageUrls.push(imageUrl);
     } 
-console.log(options)
+
     // Upload option images and enrich options with URLs
-    const updatedOptions = options.map((option) => {
-      //const optionImage = optionImages.find(file => file.fieldname === option.name);
-      let optionImageUrl = null;
+    const updatedOptions = await Promise.all(
+      options.map(async (option) => {
+        const optionImage = optionImages.find(file => file.fieldname === option.text);
+        let optionImageUrl = null;
 
-      //if (optionImage) {
-      //  optionImageUrl = await uploadFileToFirebase('post/options', optionImage);
-      //}
+        if (optionImage) {
+          optionImageUrl = await uploadFileToFirebase('post/options', optionImage);
+        }
 
-      return {
-        ...option,
-        image: optionImageUrl, // Add single image URL to each option
-      };
-    });
-    console.log(updatedOptions)
+        return {
+          ...option,
+          image: optionImageUrl, // Add single image URL to each option
+        };
+      })
+    );
+
     // Prepare the new post object
     const newPost = {
       title,
       description,
       images: postImageUrls,
       options: updatedOptions,
+      createdBy: req.user?.uid || null,
       createdAt: new Date(),
     };
-console.log(JSON.stringify(newPost))
+
     // Save to Firestore
     const postRef = await db.collection('posts').add(newPost);
-    return res.status(201).json({ id: postRef.id, ...newPost });
+    return success(res, { id: postRef.id, ...newPost }, messages.SUCCESS);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return error(res, err.message, [], 500);
   }
 };
 
 const getPosts = async (req, res) => {
   try {
-    const postsSnapshot = await db.collection('posts').get();
-    const posts = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return res.status(200).json(posts);
+    const listAll = req.query.all === 'true';
+    let postsSnapshot;
+    if (listAll) {
+      postsSnapshot = await db.collection('posts').get();
+    }else{
+      postsSnapshot = await await db.collection('posts').where('createdBy', '==', req.user?.uid || null).get();
+    }
+    const posts = postsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
+      };
+    });
+    return success(res, posts, messages.SUCCESS);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return error(res, err.message, [], 500);
   }
 };
   
@@ -68,48 +84,88 @@ const getPostById = async (req, res) => {
   try {
     const postDoc = await db.collection('posts').doc(id).get();
     if (!postDoc.exists) {
-      return res.status(404).json({ message: 'Post not found' });
+      return error(res, messages.POST_NOT_FOUND, [], 404);
     }
-    return res.status(200).json({ id: postDoc.id, ...postDoc.data() });
+    const data = postDoc.data();
+    const formattedPost = {
+      id: postDoc.id,
+      ...data,
+      createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
+    };
+    return success(res, formattedPost, messages.SUCCESS);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return error(res, err.message, [], 500);
   }
 };
 
 const updatePost = async (req, res) => {
   const { id } = req.params;
-  const { title, description, tags } = req.body;
-  const images = req.files; // For updating images
+  const { title, description, options: rawOptions } = req.body;
 
   try {
+    // Parse options JSON from the request body
+    const options = rawOptions ? JSON.parse(rawOptions) : [];
+
+    // Fetch the existing post
     const postDoc = await db.collection('posts').doc(id).get();
     if (!postDoc.exists) {
-      return res.status(404).json({ message: 'Post not found' });
+      return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
-    // Prepare updated data
-    let updatedData = {
-      title: title || postDoc.data().title,
-      description: description || postDoc.data().description,
-      tags: tags || postDoc.data().tags,
+    const existingPost = postDoc.data();
+
+    // Ensure the logged-in user is the one who created the post or is authorized to update it
+    if (existingPost.createdBy !== req.user?.uid) {
+      return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
+    }
+
+    // Separate `postImages` and `options` images
+    const postImages = req.files.filter(file => file.fieldname === 'postImages');
+    const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.text));
+
+    // Handle updating or adding post images
+    const postImageUrls = [...existingPost.images]; // Start with existing images
+    for (const image of postImages) {
+      const imageUrl = await uploadFileToFirebase('post', image);
+      postImageUrls.push(imageUrl); // Add new image URLs
+    }
+
+    // Handle updating or adding option images
+    const updatedOptions = await Promise.all(
+      options.map(async (option) => {
+        const existingOption = existingPost.options.find(opt => opt.text === option.text);
+        const optionImage = optionImages.find(file => file.fieldname === option.text);
+        let optionImageUrl = existingOption?.image || null; // Use existing URL if available
+
+        if (optionImage) {
+          optionImageUrl = await uploadFileToFirebase('post/options', optionImage); // Replace or add new URL
+        }
+
+        return {
+          ...option,
+          image: optionImageUrl, // Update or add image URL
+        };
+      })
+    );
+
+    // Prepare the updated post object
+    const updatedPost = {
+      title: title || existingPost.title,
+      description: description || existingPost.description,
+      images: postImageUrls,
+      options: updatedOptions,
+      updatedBy: req.user?.uid,  // Log the user who updated the post
+      updatedAt: new Date(),
     };
 
-    // Update images if provided
-    if (images && images.length > 0) {
-      const imageUrls = [];
-      for (const image of images) {
-        const imageUrl = await uploadFileToFirebase(image);
-        imageUrls.push(imageUrl);
-      }
-      updatedData.images = imageUrls;
-    }
-
-    await db.collection('posts').doc(id).update(updatedData);
-    return res.status(200).json({ message: 'Post updated successfully' });
+    // Update Firestore
+    const postRef = await db.collection('posts').doc(id).update(updatedPost);
+    return success(res, { id: postRef.id, ...updatedPost }, messages.SUCCESS);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return error(res, err.message, [], 500);
   }
 };
+
 
 const deletePost = async (req, res) => {
   const { id } = req.params;
@@ -118,10 +174,19 @@ const deletePost = async (req, res) => {
     if (!postDoc.exists) {
       return res.status(404).json({ message: 'Post not found' });
     }
+
+    const postData = postDoc.data();
+    const loggedInUserId = req.user.uid;
+
+    // Check if the logged-in user is the creator of the post
+    if (postData.createdBy !== loggedInUserId) {
+      return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
+    }
+
     await db.collection('posts').doc(id).delete();
-    return res.status(200).json({ message: 'Post deleted successfully' });
+    return success(res, [], messages.SUCCESS);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    return error(res, err.message, [], 500);
   }
 };
 

@@ -14,10 +14,10 @@ const {
 } = require('../model/request');
 const router = express.Router();
 
-router.post('/create', authenticateJWT, uploadValidator('postImages', true), createPost);
+router.post('/create', authenticateJWT, uploadValidator(), createPost);
 router.get('/get', authenticateJWT, getPosts);
 router.get('/get/:id', authenticateJWT, getPostById);
-router.put('/update/:id', authenticateJWT, uploadValidator('postImages', true), updatePost);
+router.put('/update/:id', authenticateJWT, uploadValidator(), updatePost);
 router.delete('/delete/:id', authenticateJWT, deletePost);
 
 module.exports = router;

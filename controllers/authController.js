@@ -100,9 +100,9 @@ const registerStep2 = async (req, res) => {
 
 const registerStep3 = async (req, res) => {
   const { email, password, username, bio } = req.body;
-  const profilePic = req.file;
+  const files = req.files;
   try {
-    if (!profilePic) {
+    if (!files || files.length === 0) {
       return error(res, messages.PROFILE_PICTURE_ERROR, [], 400);
     }
 
@@ -126,10 +126,7 @@ const registerStep3 = async (req, res) => {
     }
 
     // Handle profile picture upload if a file is provided
-    let profilePicUrl = null;
-    if (profilePic) {
-      profilePicUrl = await uploadFileToFirebase('user', profilePic);
-    }
+    let profilePicUrl = await uploadFileToFirebase('user', files[0]);
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);

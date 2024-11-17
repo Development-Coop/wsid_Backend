@@ -23,7 +23,7 @@ const trendingUserList = async (req, res) => {
 
 const editProfile = async (req, res) => {
   const { name, dateOfBirth, password, username, bio } = req.body;
-  const profilePic = req.file;
+  const files = req.files;
 
   try {
     const { uid } = req.user;
@@ -43,8 +43,8 @@ const editProfile = async (req, res) => {
     };
 
     // Handle profile picture update
-    if (profilePic) {
-      const profilePicUrl = await uploadFileToFirebase('user', profilePic);
+    if (files && files.length > 0) {
+      const profilePicUrl = await uploadFileToFirebase('user', files[0]);
       updatedData.profilePicUrl = profilePicUrl;
     }
 
