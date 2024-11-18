@@ -1,5 +1,6 @@
 const express = require('express');
 const {
+  usersList,
   trendingUserList,
   editProfile,
   viewProfile,
@@ -14,6 +15,7 @@ const {
 } = require('../model/request');
 const router = express.Router();
 
+router.get('/list', authenticateJWT, usersList);
 router.get('/trending', authenticateJWT, trendingUserList);
 router.post('/edit', authenticateJWT, uploadValidator(), validateRequest(editProfileSchema), editProfile);
 router.get('/view', authenticateJWT, viewProfile);

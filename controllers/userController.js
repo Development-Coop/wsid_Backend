@@ -4,6 +4,56 @@ const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 const { uploadFileToFirebase } = require('../helper/firebase_storage');
 
+const usersList = async (req, res) => {
+  try {
+    const { email } = req.user;
+    const { page = 1, limit = 10, sort = 'name' } = req.query; // Default values for pagination and sorting
+
+    const limitValue = parseInt(limit, 10);
+    const pageValue = parseInt(page, 10);
+
+    // Calculate the start point for pagination
+    const offset = (pageValue - 1) * limitValue;
+
+    // Fetch users with sorting, excluding the current user
+    const userQuery = db
+      .collection('users')
+      .where('email', '!=', email)
+      .orderBy(sort) // Sorting based on the query parameter
+      .offset(offset)
+      .limit(limitValue);
+
+    const userSnapshot = await userQuery.get();
+
+    if (userSnapshot.empty) {
+      return success(res, [], messages.NO_USERS_FOUND);
+    }
+
+    const users = [];
+    userSnapshot.forEach((doc) => {
+      const userData = doc.data();
+
+      // Convert Firestore's timestamp to JavaScript Date object
+      const createdAt = userData.createdAt ? userData.createdAt.toDate() : null;
+
+      users.push({
+        id: doc.id,
+        name: userData.name,
+        email: userData.email,
+        //dateOfBirth: userData.dateOfBirth,
+        //username: userData.username,
+        //profilePic: userData.profilePicUrl,
+        //bio: userData.bio,
+        createdAt,
+      });
+    });
+
+    return success(res, users, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 const trendingUserList = async (req, res) => {
   try {
     const { email } = req.user;
@@ -198,6 +248,7 @@ const followProfile = async (req, res) => {
 };
 
 module.exports = { 
+  usersList,
   trendingUserList,
   editProfile,
   viewProfile,

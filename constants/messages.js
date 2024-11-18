@@ -31,6 +31,7 @@ module.exports = {
   EXPIRED_REFRESH_TOKEN: 'Invalid or Expired Refresh Token!',
   INVALID_REFRESH_TOKEN: 'Invalid Refresh Token!',
   REFRESH_TOKEN_ERROR: 'Refresh token has expired! Please log in again.',
+  NO_USERS_FOUND: 'No users found!',
   USER_NOT_FOUND: 'User not found!',
   POST_NOT_FOUND: 'Post not found!',
   UNAUTHORISED_ACCESS: 'You\'re not authorized to perform this operation'
