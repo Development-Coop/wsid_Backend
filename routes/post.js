@@ -4,7 +4,8 @@ const {
     getPosts,
     getPostById,
     updatePost,
-    deletePost 
+    deletePost,
+    voteForOption 
 } = require('./../controllers/postController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -19,5 +20,6 @@ router.get('/get', authenticateJWT, getPosts);
 router.get('/get/:id', authenticateJWT, getPostById);
 router.put('/update/:id', authenticateJWT, uploadValidator(), updatePost);
 router.delete('/delete/:id', authenticateJWT, deletePost);
+router.post('/vote/:id', authenticateJWT, voteForOption);
 
 module.exports = router;

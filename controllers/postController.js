@@ -59,17 +59,35 @@ const createPost = async (req, res) => {
 const getPosts = async (req, res) => {
   try {
     const listAll = req.query.all === 'true';
+    const { page = 1, limit = 10, sort = 'title' } = req.query; // Default values for pagination and sorting
+
+    const limitValue = parseInt(limit, 10);
+    const pageValue = parseInt(page, 10);
+
+    // Calculate the start point for pagination
+    const offset = (pageValue - 1) * limitValue;
+
     let postsSnapshot;
     if (listAll) {
-      postsSnapshot = await db.collection('posts').get();
+      postsSnapshot = await db.collection('posts')
+                            .orderBy(sort)
+                            .offset(offset)
+                            .limit(limitValue)
+                            .get();
     }else{
-      postsSnapshot = await await db.collection('posts').where('createdBy', '==', req.user?.uid || null).get();
+      postsSnapshot = await db.collection('posts')
+                          .where('createdBy', '==', req.user?.uid || null)
+                          .orderBy(sort)
+                          .offset(offset)
+                          .limit(limitValue)
+                          .get();
     }
     const posts = postsSnapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
-        ...data,
+        title: data.title,
+        description: data.description,
         createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
       };
     });
@@ -86,10 +104,28 @@ const getPostById = async (req, res) => {
     if (!postDoc.exists) {
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
+
     const data = postDoc.data();
+
+    // Calculate total votes
+    const totalVotes = data.options.reduce((sum, option) => sum + (option.votes || 0), 0);
+
+    // Calculate vote percentage for each option
+    const updatedOptions = data.options.map(option => {
+      const votes = option.votes || 0;
+      const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(2) : 0;
+      return {
+        ...option,
+        votes,
+        percentage: parseFloat(percentage), // Ensure numeric percentage
+      };
+    });
+
+    // Prepare the response
     const formattedPost = {
       id: postDoc.id,
       ...data,
+      options: updatedOptions, // Include updated options with percentages
       createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
     };
     return success(res, formattedPost, messages.SUCCESS);
@@ -154,7 +190,6 @@ const updatePost = async (req, res) => {
       description: description || existingPost.description,
       images: postImageUrls,
       options: updatedOptions,
-      updatedBy: req.user?.uid,  // Log the user who updated the post
       updatedAt: new Date(),
     };
 
@@ -172,7 +207,7 @@ const deletePost = async (req, res) => {
   try {
     const postDoc = await db.collection('posts').doc(id).get();
     if (!postDoc.exists) {
-      return res.status(404).json({ message: 'Post not found' });
+      return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
     const postData = postDoc.data();
@@ -190,10 +225,57 @@ const deletePost = async (req, res) => {
   }
 };
 
+const voteForOption = async (req, res) => {
+  const { id } = req.params;
+  const { optionText } = req.body;
+  const userId = req.user?.uid;
+
+  if (!userId) {
+    return error(res, "Unauthorized user", [], 401);
+  }
+
+  try {
+    const postRef = db.collection('posts').doc(id);
+    const postDoc = await postRef.get();
+
+    if (!postDoc.exists) {
+      return error(res, messages.POST_NOT_FOUND, [], 404);
+    }
+
+    const postData = postDoc.data();
+    let updatedOptions = [];
+
+    // Update the votes and voters
+    postData.options.forEach(option => {
+      if (option.text === optionText) {
+        if (option.voters?.includes(userId)) {
+          // Revert vote
+          option.votes = (option.votes || 0) - 1;
+          option.voters = option.voters.filter(voter => voter !== userId);
+        } else {
+          // Add vote
+          option.votes = (option.votes || 0) + 1;
+          option.voters = [...(option.voters || []), userId];
+        }
+      }
+      updatedOptions.push(option);
+    });
+
+    // Update the post with the modified options
+    await postRef.update({ options: updatedOptions });
+
+    return success(res, { message: messages.VOTE_SUCCESS, options: updatedOptions }, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+
 module.exports = { 
   createPost,
   getPosts,
   getPostById,
   updatePost,
-  deletePost
+  deletePost,
+  voteForOption
 };
