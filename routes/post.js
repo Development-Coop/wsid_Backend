@@ -5,6 +5,7 @@ const {
     getPostById,
     updatePost,
     deletePost,
+    searchPost,
     castVote,
     deleteVote,
     createComment,
@@ -24,6 +25,7 @@ router.put('/update/:id', authenticateJWT, uploadValidator(), updatePost);
 router.delete('/delete/:id', authenticateJWT, deletePost);
 router.get('/get', authenticateJWT, getAllPosts);
 router.get('/get/:id', authenticateJWT, getPostById);
+router.get('/search', authenticateJWT, searchPost);
 
 /* need to implement
 search api */

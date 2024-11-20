@@ -5,7 +5,8 @@ const {
   editProfile,
   viewProfile,
   likeProfile,
-  followProfile
+  followProfile,
+  searchUsers
 } = require('../controllers/userController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -21,5 +22,6 @@ router.post('/edit', authenticateJWT, uploadValidator(), validateRequest(editPro
 router.get('/view', authenticateJWT, viewProfile);
 router.post('/like', authenticateJWT, likeProfile);
 router.post('/follow', authenticateJWT, followProfile);
+router.get('/search', authenticateJWT, searchUsers);
 
 module.exports = router;
