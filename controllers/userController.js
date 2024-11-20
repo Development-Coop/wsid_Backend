@@ -277,11 +277,59 @@ const followProfile = async (req, res) => {
   }
 };
 
+const searchUsers = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    // Ensure query is provided and has a length of at least 3
+    if (!query || query.length < 3) {
+      return error(res, "Search query must be at least 3 characters long", [], 400);
+    }
+
+    // Perform Firestore queries
+    const nameQuery = db.collection('users').where('name', '>=', query).where('name', '<=', query + '\uf8ff');
+    const usernameQuery = db.collection('users').where('username', '>=', query).where('username', '<=', query + '\uf8ff');
+    const emailQuery = db.collection('users').where('email', '>=', query).where('email', '<=', query + '\uf8ff');
+
+    // Fetch results
+    const [nameSnapshot, usernameSnapshot, emailSnapshot] = await Promise.all([
+      nameQuery.get(),
+      usernameQuery.get(),
+      emailQuery.get(),
+    ]);
+
+    // Combine and deduplicate results
+    const usersMap = new Map();
+    const processSnapshot = (snapshot) => {
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        usersMap.set(doc.id, {
+          id: doc.id,
+          name: userData.name,
+          profilePicUrl: userData.profilePicUrl || null,
+        });
+      });
+    };
+
+    processSnapshot(nameSnapshot);
+    processSnapshot(usernameSnapshot);
+    processSnapshot(emailSnapshot);
+
+    // Convert Map values to an array
+    const users = Array.from(usersMap.values());
+
+    return success(res, users, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 module.exports = { 
   usersList,
   trendingUserList,
   editProfile,
   viewProfile,
   likeProfile,
-  followProfile
+  followProfile,
+  searchUsers
 };

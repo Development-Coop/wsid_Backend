@@ -317,6 +317,75 @@ const getPostById = async (req, res) => {
   }
 };
 
+const searchPost = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    // Ensure query is provided and has a length of at least 3
+    if (!query || query.length < 3) {
+      return error(res, "Search query must be at least 3 characters long", [], 400);
+    }
+
+    // Query Firestore for posts with matching titles
+    const titleQuery = db
+      .collection('posts')
+      .where('title', '>=', query)
+      .where('title', '<=', query + '\uf8ff');
+
+    const postsSnapshot = await titleQuery.get();
+
+    if (postsSnapshot.empty) {
+      return success(res, [], messages.POSTS_NOT_FOUND);
+    }
+
+    // Process posts
+    const posts = await Promise.all(
+      postsSnapshot.docs.map(async (doc) => {
+        const postId = doc.id;
+        const post = doc.data();
+
+        // Format post
+        const formattedPost = {
+          id: postId,
+          ...post,
+          createdAt: post.createdAt?.toMillis() || null,
+          updatedAt: post.updatedAt?.toMillis() || null,
+        };
+
+        // Fetch user details
+        const userDoc = await db.collection('users').doc(post.createdBy).get();
+        const user = userDoc.exists
+          ? {
+              id: userDoc.id,
+              name: userDoc.data().name || null,
+              profilePicUrl: userDoc.data().profilePicUrl || null,
+            }
+          : null;
+
+        // Fetch votes count
+        const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
+        const votesCount = votesSnapshot.size;
+
+        // Fetch comments count
+        const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+        const commentsCount = commentsSnapshot.size;
+
+        // Combine post details
+        return {
+          ...formattedPost,
+          user,
+          votesCount,
+          commentsCount
+        };
+      })
+    );
+
+    return success(res, posts, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 const castVote = async (req, res) => {
   const { postId, optionId } = req.body;
 
@@ -418,6 +487,7 @@ module.exports = {
   getPostById,
   updatePost,
   deletePost,
+  searchPost,
   castVote,
   deleteVote,
   createComment,
