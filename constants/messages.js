@@ -34,5 +34,6 @@ module.exports = {
   NO_USERS_FOUND: 'No users found!',
   USER_NOT_FOUND: 'User not found!',
   POST_NOT_FOUND: 'Post not found!',
-  UNAUTHORISED_ACCESS: 'You\'re not authorized to perform this operation'
+  UNAUTHORISED_ACCESS: 'You\'re not authorized to perform this operation',
+  INVALID_OPTIONS_FORMAT: 'Invalid options format'
 };

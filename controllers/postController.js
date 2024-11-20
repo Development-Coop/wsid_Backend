@@ -7,275 +7,420 @@ const createPost = async (req, res) => {
   const { title, description, options: rawOptions } = req.body;
 
   try {
-    // Parse options JSON from the request body
-    const options = rawOptions ? JSON.parse(rawOptions) : [];
-
-    // Separate `postImages` from `options` images
-    const postImages = req.files.filter(file => file.fieldname === 'postImages');
-    const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.text));
+    let options = [];
+    try {
+      options = rawOptions ? JSON.parse(rawOptions) : [];
+    } catch {
+      return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
+    }
 
     // Upload post images
+    const postImages = req.files.filter(file => file.fieldname === 'postImages');
     const postImageUrls = [];
     for (const image of postImages) {
       const imageUrl = await uploadFileToFirebase('post', image);
       postImageUrls.push(imageUrl);
-    } 
+    }
 
-    // Upload option images and enrich options with URLs
-    const updatedOptions = await Promise.all(
-      options.map(async (option) => {
-        const optionImage = optionImages.find(file => file.fieldname === option.text);
-        let optionImageUrl = null;
-
-        if (optionImage) {
-          optionImageUrl = await uploadFileToFirebase('post/options', optionImage);
-        }
-
-        return {
-          ...option,
-          image: optionImageUrl, // Add single image URL to each option
-        };
-      })
-    );
-
-    // Prepare the new post object
+    // Create the post
     const newPost = {
       title,
       description,
       images: postImageUrls,
-      options: updatedOptions,
       createdBy: req.user?.uid || null,
       createdAt: new Date(),
     };
 
-    // Save to Firestore
     const postRef = await db.collection('posts').add(newPost);
-    return success(res, { id: postRef.id, ...newPost }, messages.SUCCESS);
-  } catch (err) {
-    return error(res, err.message, [], 500);
-  }
-};
+    const postId = postRef.id;
 
-const getPosts = async (req, res) => {
-  try {
-    const listAll = req.query.all === 'true';
-    const { page = 1, limit = 10, sort = 'title' } = req.query; // Default values for pagination and sorting
+    // Upload option images and create options collection
+    if (options.length > 0) {
+      const optionPromises = options.map(async (option) => {
+        const optionImage = req.files.find(file => file.fieldname === option.fileName);
+        const optionImageUrl = optionImage ? await uploadFileToFirebase('post/options', optionImage) : null;
+        const newOption = {
+          postId,
+          text: option.text,
+          image: optionImageUrl,
+          votesCount: 0,
+        };
+        return db.collection('options').add(newOption);
+      });
 
-    const limitValue = parseInt(limit, 10);
-    const pageValue = parseInt(page, 10);
-
-    // Calculate the start point for pagination
-    const offset = (pageValue - 1) * limitValue;
-
-    let postsSnapshot;
-    if (listAll) {
-      postsSnapshot = await db.collection('posts')
-                            .orderBy(sort)
-                            .offset(offset)
-                            .limit(limitValue)
-                            .get();
-    }else{
-      postsSnapshot = await db.collection('posts')
-                          .where('createdBy', '==', req.user?.uid || null)
-                          .orderBy(sort)
-                          .offset(offset)
-                          .limit(limitValue)
-                          .get();
-    }
-    const posts = postsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        title: data.title,
-        description: data.description,
-        createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
-      };
-    });
-    return success(res, posts, messages.SUCCESS);
-  } catch (err) {
-    return error(res, err.message, [], 500);
-  }
-};
-  
-const getPostById = async (req, res) => {
-  const { id } = req.params;
-  try {
-    const postDoc = await db.collection('posts').doc(id).get();
-    if (!postDoc.exists) {
-      return error(res, messages.POST_NOT_FOUND, [], 404);
+      await Promise.all(optionPromises);
     }
 
-    const data = postDoc.data();
-
-    // Calculate total votes
-    const totalVotes = data.options.reduce((sum, option) => sum + (option.votes || 0), 0);
-
-    // Calculate vote percentage for each option
-    const updatedOptions = data.options.map(option => {
-      const votes = option.votes || 0;
-      const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(2) : 0;
-      return {
-        ...option,
-        votes,
-        percentage: parseFloat(percentage), // Ensure numeric percentage
-      };
-    });
-
-    // Prepare the response
-    const formattedPost = {
-      id: postDoc.id,
-      ...data,
-      options: updatedOptions, // Include updated options with percentages
-      createdAt: data.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
-    };
-    return success(res, formattedPost, messages.SUCCESS);
+    return success(res, { postId }, messages.SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
 };
 
 const updatePost = async (req, res) => {
-  const { id } = req.params;
+  const { id: postId } = req.params;
   const { title, description, options: rawOptions } = req.body;
 
   try {
-    // Parse options JSON from the request body
-    const options = rawOptions ? JSON.parse(rawOptions) : [];
+    let options = [];
+    try {
+      options = rawOptions ? JSON.parse(rawOptions) : [];
+    } catch {
+      return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
+    }
 
     // Fetch the existing post
-    const postDoc = await db.collection('posts').doc(id).get();
+    const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
-    const existingPost = postDoc.data();
-
     // Ensure the logged-in user is the one who created the post or is authorized to update it
+    const existingPost = postDoc.data();
     if (existingPost.createdBy !== req.user?.uid) {
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
-    // Separate `postImages` and `options` images
-    const postImages = req.files.filter(file => file.fieldname === 'postImages');
-    const optionImages = req.files.filter(file => options.some(option => file.fieldname === option.text));
-
     // Handle updating or adding post images
+    const postImages = req.files.filter(file => file.fieldname === 'postImages');
     const postImageUrls = [...existingPost.images]; // Start with existing images
     for (const image of postImages) {
       const imageUrl = await uploadFileToFirebase('post', image);
       postImageUrls.push(imageUrl); // Add new image URLs
     }
 
-    // Handle updating or adding option images
-    const updatedOptions = await Promise.all(
-      options.map(async (option) => {
-        const existingOption = existingPost.options.find(opt => opt.text === option.text);
-        const optionImage = optionImages.find(file => file.fieldname === option.text);
-        let optionImageUrl = existingOption?.image || null; // Use existing URL if available
-
-        if (optionImage) {
-          optionImageUrl = await uploadFileToFirebase('post/options', optionImage); // Replace or add new URL
-        }
-
-        return {
-          ...option,
-          image: optionImageUrl, // Update or add image URL
-        };
-      })
-    );
-
-    // Prepare the updated post object
+    // Prepare and update post object
     const updatedPost = {
       title: title || existingPost.title,
       description: description || existingPost.description,
       images: postImageUrls,
-      options: updatedOptions,
       updatedAt: new Date(),
     };
+    await db.collection('posts').doc(postId).update(updatedPost);
 
-    // Update Firestore
-    const postRef = await db.collection('posts').doc(id).update(updatedPost);
-    return success(res, { id: postRef.id, ...updatedPost }, messages.SUCCESS);
+    // Handle updating or adding option images
+    if (options.length > 0) {
+      const updatePromises = options.map(async (option) => {
+        const optionImage = req.files.find(file => file.fieldname === option.fileName);
+        let optionImageUrl = ""
+        if (optionImage) {
+          optionImageUrl = await uploadFileToFirebase('post/options', optionImage); // Replace or add new URL
+        }
+
+        if (option.id) {
+          // Update existing option
+          return db.collection('options').doc(option.id).update({
+            text: option.text,
+            image: optionImageUrl,
+          });
+        } else {
+          // Add new option
+          const newOption = {
+            postId,
+            text: option.text,
+            image: optionImageUrl,
+            votesCount: 0,
+          };
+          return db.collection('options').add(newOption);
+        }
+      })
+      await Promise.all(updatePromises);
+    }
+
+    return success(res, { postId }, messages.SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
 };
 
-
 const deletePost = async (req, res) => {
-  const { id } = req.params;
+  const { id: postId } = req.params;
+
   try {
-    const postDoc = await db.collection('posts').doc(id).get();
+    // Fetch the existing post
+    const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
-    const postData = postDoc.data();
-    const loggedInUserId = req.user.uid;
-
-    // Check if the logged-in user is the creator of the post
-    if (postData.createdBy !== loggedInUserId) {
+    // Ensure the logged-in user is the one who created the post or is authorized to update it
+    const existingPost = postDoc.data();
+    if (existingPost.createdBy !== req.user?.uid) {
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
-    await db.collection('posts').doc(id).delete();
-    return success(res, [], messages.SUCCESS);
+    // Delete options associated with the post
+    const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
+    const deleteOptionsPromises = optionsSnapshot.docs.map((doc) => doc.ref.delete());
+    await Promise.all(deleteOptionsPromises);
+
+    // Delete votes associated with the post
+    const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
+    const deleteVotesPromises = votesSnapshot.docs.map((doc) => doc.ref.delete());
+    await Promise.all(deleteVotesPromises);
+
+    // Delete comments associated with the post
+    const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+    const deleteCommentsPromises = commentsSnapshot.docs.map((doc) => doc.ref.delete());
+    await Promise.all(deleteCommentsPromises);
+
+    // Delete the post
+    await db.collection('posts').doc(postId).delete();
+
+    return success(res, { }, messages.SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
 };
 
-const voteForOption = async (req, res) => {
-  const { id } = req.params;
-  const { optionText } = req.body;
-  const userId = req.user?.uid;
+const getAllPosts = async (req, res) => {
+  try {
+    // Extract query parameters
+    const listAll = req.query.all === 'true';
+    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query;
 
-  if (!userId) {
-    return error(res, "Unauthorized user", [], 401);
+    // Calculate the starting point for pagination
+    const pageNumber = parseInt(page, 10);
+    const pageSize = parseInt(limit, 10);
+    const startAt = (pageNumber - 1) * pageSize;
+
+    let query;
+    if (listAll) {
+      query = db.collection('posts')
+                        .orderBy(sortBy, order)
+    }else{
+      query = db.collection('posts')
+              .where('createdBy', '==', req.user?.uid || null)
+              .orderBy(sortBy, order)
+    }
+
+    // Fetch the total number of posts for pagination metadata
+    const totalSnapshot = await db.collection('posts').get();
+    const totalPosts = totalSnapshot.size;
+
+    // Add pagination to the query
+    query = query.offset(startAt).limit(pageSize);
+
+    // Execute query
+    const postsSnapshot = await query.get();
+    const postsPromises = postsSnapshot.docs.map(async (doc) => {
+      const post = doc.data();
+      const postId = doc.id;
+
+      // Convert Firestore Timestamp to JS timestamp
+      post.createdAt = post.createdAt?.toMillis() || null;
+
+      // Fetch user details
+      const userDoc = await db.collection('users').doc(post.createdBy).get();
+      const user = userDoc.exists ? userDoc.data() : {};
+
+      // Fetch votes count
+      const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
+      const votesCount = votesSnapshot.size;
+
+      // Fetch comments count
+      const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+      const commentsCount = commentsSnapshot.size;
+
+      return {
+        id: postId,
+        ...post,
+        user: {
+          id: userDoc.id || null,
+          name: user.name || null,
+          profilePicUrl: user.profilePicUrl || null,
+        },
+        votesCount,
+        commentsCount,
+      };
+    });
+
+    const posts = await Promise.all(postsPromises);
+
+    // Pagination metadata
+    const totalPages = Math.ceil(totalPosts / pageSize);
+
+    return success(res, {
+      posts,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages,
+        totalPosts,
+        pageSize,
+      },
+    }, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
   }
+};
+
+const getPostById = async (req, res) => {
+  const { id: postId } = req.params;
 
   try {
-    const postRef = db.collection('posts').doc(id);
-    const postDoc = await postRef.get();
-
+    // Fetch the existing post
+    const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
-    const postData = postDoc.data();
-    let updatedOptions = [];
+    const post = postDoc.data();
 
-    // Update the votes and voters
-    postData.options.forEach(option => {
-      if (option.text === optionText) {
-        if (option.voters?.includes(userId)) {
-          // Revert vote
-          option.votes = (option.votes || 0) - 1;
-          option.voters = option.voters.filter(voter => voter !== userId);
-        } else {
-          // Add vote
-          option.votes = (option.votes || 0) + 1;
-          option.voters = [...(option.voters || []), userId];
+    // Convert Firestore Timestamps to JS timestamps
+    const formattedPost = {
+      id: postId,
+      ...post,
+      createdAt: post.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
+      updatedAt: post.updatedAt?.toMillis() || null, // Handle cases where updatedAt might be missing
+    };
+
+    // Fetch user details
+    const userDoc = await db.collection('users').doc(post.createdBy).get();
+    const user = userDoc.exists
+      ? {
+          id: userDoc.id,
+          name: userDoc.data().name || null,
+          profilePicUrl: userDoc.data().profilePicUrl || null,
         }
-      }
-      updatedOptions.push(option);
+      : null;
+
+    // Get options related to the post
+    const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
+    const options = optionsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Get comments related to the post
+    const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+    const comments = commentsSnapshot.docs.map((doc) => {
+      const commentData = doc.data();
+      return {
+        id: doc.id,
+        ...commentData,
+        createdAt: commentData.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
+      };
     });
 
-    // Update the post with the modified options
-    await postRef.update({ options: updatedOptions });
-
-    return success(res, { message: messages.VOTE_SUCCESS, options: updatedOptions }, messages.SUCCESS);
+    return success(
+      res,
+      {
+        ...formattedPost,
+        user,
+        options,
+        comments,
+      },
+      messages.SUCCESS
+    );
   } catch (err) {
     return error(res, err.message, [], 500);
   }
 };
 
+const castVote = async (req, res) => {
+  const { postId, optionId } = req.body;
+
+  try {
+    const newVote = {
+      postId,
+      optionId,
+      userId: req.user?.uid || null,
+      createdAt: new Date(),
+    };
+
+    const voteRef = await db.collection('votes').add(newVote);
+
+    // Increment vote count for the option
+    const optionRef = db.collection('postOptions').doc(optionId);
+    await optionRef.update({
+      votesCount: admin.firestore.FieldValue.increment(1),
+    });
+
+    return res.status(201).json({ id: voteRef.id, ...newVote });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const deleteVote = async (req, res) => {
+  const { voteId, optionId } = req.params;
+
+  try {
+    await db.collection('votes').doc(voteId).delete();
+
+    // Decrement vote count for the option
+    const optionRef = db.collection('postOptions').doc(optionId);
+    await optionRef.update({
+      votesCount: admin.firestore.FieldValue.increment(-1),
+    });
+
+    return res.status(200).json({ message: "Vote deleted successfully" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const createComment = async (req, res) => {
+  const { postId, text } = req.body;
+
+  try {
+    const newComment = {
+      postId,
+      text,
+      createdBy: req.user?.uid || null,
+      createdAt: new Date(),
+      likes: [],
+      likesCount: 0,
+    };
+
+    const commentRef = await db.collection('comments').add(newComment);
+    return res.status(201).json({ id: commentRef.id, ...newComment });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const likeComment = async (req, res) => {
+  const { commentId } = req.params;
+
+  try {
+    const commentRef = db.collection('comments').doc(commentId);
+    await commentRef.update({
+      likes: admin.firestore.FieldValue.arrayUnion(req.user?.uid),
+      likesCount: admin.firestore.FieldValue.increment(1),
+    });
+
+    return res.status(200).json({ message: "Comment liked successfully" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const unlikeComment = async (req, res) => {
+  const { commentId } = req.params;
+
+  try {
+    const commentRef = db.collection('comments').doc(commentId);
+    await commentRef.update({
+      likes: admin.firestore.FieldValue.arrayRemove(req.user?.uid),
+      likesCount: admin.firestore.FieldValue.increment(-1),
+    });
+
+    return res.status(200).json({ message: "Comment unliked successfully" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
 
 module.exports = { 
   createPost,
-  getPosts,
+  getAllPosts,
   getPostById,
   updatePost,
   deletePost,
-  voteForOption
+  castVote,
+  deleteVote,
+  createComment,
+  likeComment,
+  unlikeComment
 };
