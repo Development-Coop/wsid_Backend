@@ -7,26 +7,48 @@ const { uploadFileToFirebase } = require('../helper/firebase_storage');
 const usersList = async (req, res) => {
   try {
     const { email } = req.user;
-    const { page = 1, limit = 10, sort = 'name' } = req.query; // Default values for pagination and sorting
+    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query; // Default values for pagination and sorting
 
     const limitValue = parseInt(limit, 10);
     const pageValue = parseInt(page, 10);
 
-    // Calculate the start point for pagination
+    // Calculate the starting point for pagination
     const offset = (pageValue - 1) * limitValue;
+
+    // Fetch the total count of users excluding the current user
+    const totalUsersSnapshot = await db
+      .collection('users')
+      .where('email', '!=', email)
+      .get();
+    const totalUsers = totalUsersSnapshot.size;
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalUsers / limitValue);
 
     // Fetch users with sorting, excluding the current user
     const userQuery = db
       .collection('users')
       .where('email', '!=', email)
-      .orderBy(sort) // Sorting based on the query parameter
+      .orderBy(sortBy, order) // Sorting based on the query parameter
       .offset(offset)
       .limit(limitValue);
 
     const userSnapshot = await userQuery.get();
 
     if (userSnapshot.empty) {
-      return success(res, [], messages.NO_USERS_FOUND);
+      return success(
+        res,
+        {
+          users: [],
+          pagination: {
+            currentPage: pageValue,
+            totalPages,
+            totalUsers,
+            pageSize: limitValue,
+          },
+        },
+        messages.NO_USERS_FOUND
+      );
     }
 
     const users = [];
@@ -40,15 +62,23 @@ const usersList = async (req, res) => {
         id: doc.id,
         name: userData.name,
         email: userData.email,
-        //dateOfBirth: userData.dateOfBirth,
-        //username: userData.username,
-        //profilePic: userData.profilePicUrl,
-        //bio: userData.bio,
         createdAt,
       });
     });
 
-    return success(res, users, messages.SUCCESS);
+    return success(
+      res,
+      {
+        users,
+        pagination: {
+          currentPage: pageValue,
+          totalPages,
+          totalUsers,
+          pageSize: limitValue,
+        },
+      },
+      messages.SUCCESS
+    );
   } catch (err) {
     return error(res, err.message, [], 500);
   }

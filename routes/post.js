@@ -1,12 +1,16 @@
 const express = require('express');
 const { 
     createPost,
-    getPosts,
+    getAllPosts,
     getPostById,
     updatePost,
     deletePost,
-    voteForOption 
-} = require('./../controllers/postController');
+    castVote,
+    deleteVote,
+    createComment,
+    likeComment,
+    unlikeComment
+} = require('../controllers/postController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
 const uploadValidator = require('../helper/multer');
@@ -16,10 +20,25 @@ const {
 const router = express.Router();
 
 router.post('/create', authenticateJWT, uploadValidator(), createPost);
-router.get('/get', authenticateJWT, getPosts);
-router.get('/get/:id', authenticateJWT, getPostById);
 router.put('/update/:id', authenticateJWT, uploadValidator(), updatePost);
 router.delete('/delete/:id', authenticateJWT, deletePost);
-router.post('/vote/:id', authenticateJWT, voteForOption);
+router.get('/get', authenticateJWT, getAllPosts);
+router.get('/get/:id', authenticateJWT, getPostById);
+
+/* need to implement
+search api */
+
+/* have to revise */
+router.post('/vote/:postId/:optionId', authenticateJWT, castVote);
+router.delete('/vote/:voteId/:optionId', authenticateJWT, deleteVote);
+
+router.post('/comment', authenticateJWT, createComment);
+router.post('/comment/like/:id', authenticateJWT, likeComment);
+router.post('/comment/unlike/:id', authenticateJWT, unlikeComment);
+
+/* need to implement instant delete:
+delete post image
+delete option
+delete option image */
 
 module.exports = router;
