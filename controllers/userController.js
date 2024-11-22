@@ -124,8 +124,13 @@ const editProfile = async (req, res) => {
 
     // Handle profile picture update
     if (files && files.length > 0) {
-      const profilePicUrl = await uploadFileToFirebase('user', files[0]);
+      const profilePic = files.filter(file => file.fieldname === 'profilePic');
+      const profilePicUrl = await uploadFileToFirebase('user', profilePic[0]);
       updatedData.profilePicUrl = profilePicUrl;
+
+      const coverPic = files.filter(file => file.fieldname === 'coverPic');
+      const coverPicUrl = await uploadFileToFirebase('user', coverPic[0]);
+      updatedData.coverPicUrl = coverPicUrl;
     }
 
     // Handle password update
@@ -190,6 +195,7 @@ const viewProfile = async (req, res) => {
         dateOfBirth: userData.dateOfBirth,
         username: userData.username,
         profilePic: userData.profilePicUrl,
+        coverPic: userData.coverPicUrl,
         bio: userData.bio,
         createdAt,
       },
