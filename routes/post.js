@@ -10,7 +10,8 @@ const {
     deleteVote,
     createComment,
     likeComment,
-    unlikeComment
+    unlikeComment,
+    trendingPosts
 } = require('../controllers/postController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -26,13 +27,12 @@ router.delete('/delete/:id', authenticateJWT, deletePost);
 router.get('/get', authenticateJWT, getAllPosts);
 router.get('/get/:id', authenticateJWT, getPostById);
 router.get('/search', authenticateJWT, searchPost);
+router.get('/trending', authenticateJWT, trendingPosts);
 
-/* need to implement
-search api */
 
 /* have to revise */
-router.post('/vote/:postId/:optionId', authenticateJWT, castVote);
-router.delete('/vote/:voteId/:optionId', authenticateJWT, deleteVote);
+router.post('/vote', authenticateJWT, castVote);
+router.delete('/vote', authenticateJWT, deleteVote);
 
 router.post('/comment', authenticateJWT, createComment);
 router.post('/comment/like/:id', authenticateJWT, likeComment);

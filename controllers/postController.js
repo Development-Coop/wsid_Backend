@@ -1,4 +1,5 @@
 const db = require('../db/init');
+const admin = require('firebase-admin');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 const { uploadFileToFirebase } = require('../helper/firebase_storage');
@@ -389,7 +390,13 @@ const searchPost = async (req, res) => {
 const castVote = async (req, res) => {
   const { postId, optionId } = req.body;
 
+  // Validate inputs
+  if (!postId || !optionId) {
+    return res.status(400).json({ error: "postId and optionId are required." });
+  }
+
   try {
+    // Create the vote object
     const newVote = {
       postId,
       optionId,
@@ -397,34 +404,58 @@ const castVote = async (req, res) => {
       createdAt: new Date(),
     };
 
+    // Add the vote to the Firestore database
     const voteRef = await db.collection('votes').add(newVote);
 
     // Increment vote count for the option
-    const optionRef = db.collection('postOptions').doc(optionId);
+    const optionRef = db.collection('options').doc(optionId);
     await optionRef.update({
-      votesCount: admin.firestore.FieldValue.increment(1),
+      votesCount: admin.firestore.FieldValue.increment(1)
     });
 
     return res.status(201).json({ id: voteRef.id, ...newVote });
   } catch (err) {
+    console.error("Error casting vote:", err.message);
     return res.status(500).json({ error: err.message });
   }
 };
 
 const deleteVote = async (req, res) => {
-  const { voteId, optionId } = req.params;
+  const { postId, optionId } = req.body;
+
+  // Validate inputs
+  if (!postId || !optionId) {
+    return res.status(400).json({ error: "postId and optionId are required." });
+  }
 
   try {
-    await db.collection('votes').doc(voteId).delete();
+    // Check if the vote exists in the database
+    const voteQuerySnapshot = await db
+      .collection('votes')
+      .where('postId', '==', postId)
+      .where('optionId', '==', optionId)
+      .where('userId', '==', req.user?.uid) 
+      .get();
 
-    // Decrement vote count for the option
-    const optionRef = db.collection('postOptions').doc(optionId);
+    if (voteQuerySnapshot.empty) {
+      return res.status(404).json({ error: "Vote not found." });
+    }
+
+    // Get the vote document
+    const voteDoc = voteQuerySnapshot.docs[0];
+    
+    // Delete the vote document
+    await voteDoc.ref.delete();
+
+    // Decrement the vote count for the option
+    const optionRef = db.collection('options').doc(optionId);
     await optionRef.update({
-      votesCount: admin.firestore.FieldValue.increment(-1),
+      votesCount: admin.firestore.FieldValue.increment(-1), // Decrement by 1
     });
 
-    return res.status(200).json({ message: "Vote deleted successfully" });
+    return res.status(200).json({ message: "Vote removed successfully." });
   } catch (err) {
+    console.error("Error deleting vote:", err.message);
     return res.status(500).json({ error: err.message });
   }
 };
@@ -481,6 +512,105 @@ const unlikeComment = async (req, res) => {
   }
 };
 
+const trendingPosts = async (req, res) => {
+  try {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Pagination parameters
+    const { page = 1, pageSize = 10 } = req.query;
+    const pageValue = parseInt(page, 10);
+    const pageSizeValue = parseInt(pageSize, 10);
+
+    // Query Firestore for posts created in the last week
+    const postsQuery = db
+      .collection('posts')
+      .where('createdAt', '>=', oneWeekAgo);
+    const postsSnapshot = await postsQuery.get();
+
+    if (postsSnapshot.empty) {
+      return success(res, {
+        posts: [],
+        pagination: {
+          currentPage: pageValue,
+          totalPages: 0,
+          totalPosts: 0,
+          pageSize: pageSizeValue,
+        },
+      }, "No trending posts found.");
+    }
+
+    // Process posts with metrics
+    const postsWithMetrics = await Promise.all(
+      postsSnapshot.docs.map(async (doc) => {
+        const postId = doc.id;
+        const post = doc.data();
+
+        // Fetch comments count
+        const commentsSnapshot = await db
+          .collection('comments')
+          .where('postId', '==', postId)
+          .get();
+        const commentsCount = commentsSnapshot.size;
+
+        const votesSnapshot = await db
+        .collection('votes')
+        .where('postId', '==', postId)
+        .get();
+        const votesCount = votesSnapshot.size;
+
+        // Fetch user details
+        const userDoc = await db.collection('users').doc(post.createdBy).get();
+        const user = userDoc.exists
+          ? {
+              id: userDoc.id,
+              name: userDoc.data().name || null,
+              profilePicUrl: userDoc.data().profilePicUrl || null,
+            }
+          : null;
+
+        // Return post with metrics
+        return {
+          id: postId,
+          title: post.title,
+          description: post.description || null,
+          images: post.images || [],
+          createdBy: post.createdBy,
+          createdAt: post.createdAt?.toMillis() || null,
+          user,
+          votesCount,
+          commentsCount,
+        };
+      })
+    );
+
+    // Sort posts by combined metric (comments + votes) in descending order
+    const sortedPosts = postsWithMetrics.sort((a, b) => 
+      b.commentsCount + b.votesCount - (a.commentsCount + a.votesCount)
+    );
+
+    // Paginate results
+    const totalPosts = sortedPosts.length;
+    const totalPages = Math.ceil(totalPosts / pageSizeValue);
+    const paginatedPosts = sortedPosts.slice(
+      (pageValue - 1) * pageSizeValue,
+      pageValue * pageSizeValue
+    );
+
+    return success(res, {
+      posts: paginatedPosts,
+      pagination: {
+        currentPage: pageValue,
+        totalPages,
+        totalPosts,
+        pageSize: pageSizeValue,
+      },
+    }, "success");
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 module.exports = { 
   createPost,
   getAllPosts,
@@ -492,5 +622,6 @@ module.exports = {
   deleteVote,
   createComment,
   likeComment,
-  unlikeComment
+  unlikeComment,
+  trendingPosts
 };
