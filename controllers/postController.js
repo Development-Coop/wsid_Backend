@@ -2,7 +2,7 @@ const db = require('../db/init');
 const admin = require('firebase-admin');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
-const { uploadFileToFirebase } = require('../helper/firebase_storage');
+const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/firebase_storage');
 
 const createPost = async (req, res) => {
   const { title, description, options: rawOptions } = req.body;
@@ -60,12 +60,17 @@ const createPost = async (req, res) => {
 
 const updatePost = async (req, res) => {
   const { id: postId } = req.params;
-  const { title, description, options: rawOptions } = req.body;
+  const { title, description, options: rawOptions, deleteImages: deleteImagesRaw, deleteOptions: deleteOptionsRaw } = req.body;
 
   try {
     let options = [];
+    let deleteImages = [];
+    let deleteOptions = [];
+
     try {
       options = rawOptions ? JSON.parse(rawOptions) : [];
+      deleteImages = deleteImagesRaw ? JSON.parse(deleteImagesRaw) : [];
+      deleteOptions = deleteOptionsRaw ? JSON.parse(deleteOptionsRaw) : [];
     } catch {
       return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
     }
@@ -99,6 +104,14 @@ const updatePost = async (req, res) => {
     };
     await db.collection('posts').doc(postId).update(updatedPost);
 
+    // Delete post images specified in the request body
+    if (deleteImages.length > 0) {
+      for (const imageUrl of deleteImages) {
+        await deleteFileFromFirebase(imageUrl); // Delete from Firebase Storage
+        existingPost.images = existingPost.images.filter(url => url !== imageUrl); // Remove from post
+      }
+    }
+
     // Handle updating or adding option images
     if (options.length > 0) {
       const updatePromises = options.map(async (option) => {
@@ -126,6 +139,20 @@ const updatePost = async (req, res) => {
         }
       })
       await Promise.all(updatePromises);
+    }
+
+    // Delete options specified in the request body
+    if (deleteOptions.length > 0) {
+      for (const optionId of deleteOptions) {
+        const optionDoc = await db.collection('options').doc(optionId).get();
+        if (optionDoc.exists) {
+          const optionData = optionDoc.data();
+          if (optionData.image) {
+            await deleteFileFromFirebase(optionData.image); // Delete option image from Firebase Storage
+          }
+          await db.collection('options').doc(optionId).delete(); // Delete option document
+        }
+      }
     }
 
     return success(res, { postId }, messages.SUCCESS);

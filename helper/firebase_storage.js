@@ -32,4 +32,24 @@ const uploadFileToFirebase = async (filePath, fileSrc) => {
     }
   };
 
-  module.exports = { uploadFileToFirebase };
+  // Function to delete a file from Firebase storage
+  const deleteFileFromFirebase = async (fileUrl) => {
+    try {
+      // Get the bucket name from the environment variable
+      const bucketName = process.env.FIREBASE_BUCKET.replace("gs://", "");
+  
+      // Extract the file path relative to the bucket
+      const filePath = decodeURIComponent(
+        fileUrl.replace(`https://storage.googleapis.com/${bucketName}/`, "")
+      );
+  
+      const bucket = admin.storage().bucket(bucketName);
+      await bucket.file(filePath).delete();
+  
+      console.log(`Successfully deleted file: ${filePath}`);
+    } catch (err) {
+      console.error("Error deleting file from Firebase:", err.message);
+    }
+  };  
+
+  module.exports = { uploadFileToFirebase, deleteFileFromFirebase };
