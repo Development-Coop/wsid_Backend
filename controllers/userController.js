@@ -2,7 +2,7 @@ const db = require('../db/init');
 const bcrypt = require('bcryptjs');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
-const { uploadFileToFirebase } = require('../helper/firebase_storage');
+const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/firebase_storage');
 
 const usersList = async (req, res) => {
   try {
@@ -115,22 +115,41 @@ const editProfile = async (req, res) => {
     }
 
     // Prepare updated data
+    const userData = userDoc.data();
     let updatedData = {
-      name: name || userDoc.data().name,
-      dateOfBirth: dateOfBirth || userDoc.data().dateOfBirth,
-      username: username || userDoc.data().username,
-      bio: bio || userDoc.data().bio,
+      name: name || userData.name,
+      dateOfBirth: dateOfBirth || userData.dateOfBirth,
+      username: username || userData.username,
+      bio: bio || userData.bio,
     };
+
+    // Variables to store old file URLs
+    let oldProfilePicUrl = userData.profilePicUrl || null;
+    let oldCoverPicUrl = userData.coverPicUrl || null;
 
     // Handle profile picture update
     if (files && files.length > 0) {
       const profilePic = files.filter(file => file.fieldname === 'profilePic');
-      const profilePicUrl = await uploadFileToFirebase('user', profilePic[0]);
-      updatedData.profilePicUrl = profilePicUrl;
+      if (profilePic.length > 0) {
+        const profilePicUrl = await uploadFileToFirebase('user', profilePic[0]);
+        updatedData.profilePicUrl = profilePicUrl;
+
+        // Delete old profile picture
+        if (oldProfilePicUrl) {
+          await deleteFileFromFirebase(oldProfilePicUrl);
+        }
+      }
 
       const coverPic = files.filter(file => file.fieldname === 'coverPic');
-      const coverPicUrl = await uploadFileToFirebase('user', coverPic[0]);
-      updatedData.coverPicUrl = coverPicUrl;
+      if (coverPic.length > 0) {
+        const coverPicUrl = await uploadFileToFirebase('user', coverPic[0]);
+        updatedData.coverPicUrl = coverPicUrl;
+
+        // Delete old cover picture
+        if (oldCoverPicUrl) {
+          await deleteFileFromFirebase(oldCoverPicUrl);
+        }
+      }
     }
 
     // Handle password update
