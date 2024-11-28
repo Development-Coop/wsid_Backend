@@ -107,6 +107,10 @@ const editProfileSchema = Joi.object({
   bio: Joi.string().optional()
 });
 
+const subscribeSchema = Joi.object({
+  email: Joi.string().email().required()
+})
+
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
@@ -117,5 +121,6 @@ module.exports = {
   forgotPasswordSchema,
   resetPasswordSchema,
   refreshAccessTokenSchema,
-  editProfileSchema
+  editProfileSchema,
+  subscribeSchema
 };
