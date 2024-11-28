@@ -35,5 +35,7 @@ module.exports = {
   USER_NOT_FOUND: 'User not found!',
   POST_NOT_FOUND: 'Post not found!',
   UNAUTHORISED_ACCESS: 'You\'re not authorized to perform this operation',
-  INVALID_OPTIONS_FORMAT: 'Invalid options format'
+  INVALID_OPTIONS_FORMAT: 'Invalid options format',
+  SUBSCRITION_SUCCESS: 'You\'ve been successfully added to our waitlist! We’ll keep you updated with the latest news.',
+  ALREADY_SUBSCRIBED: 'You\'re already on the waitlist! We’ll notify you as soon as we have updates.',
 };
