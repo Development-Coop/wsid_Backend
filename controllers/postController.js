@@ -122,9 +122,26 @@ const updatePost = async (req, res) => {
         }
 
         if (option.id) {
+          // Fetch the existing option document
+          const optionDoc = await db.collection('options').doc(option.id).get();
+          if (!optionDoc.exists) {
+            return error(res, `Option with ID ${option.id} does not exist.`, [], 500);
+          }
+          const existingOption = optionDoc.data();
+        
+          if (optionImageUrl) {
+            // If a new image is provided, delete the old image from Firebase Storage
+            if (existingOption.image) {
+              await deleteFileFromFirebase(existingOption.image);
+            }
+          } else {
+            // Keep the existing image URL if no new image is provided
+            optionImageUrl = existingOption.image;
+          }
+
           // Update existing option
           return db.collection('options').doc(option.id).update({
-            text: option.text,
+            text: option.text || existingOption.text,
             image: optionImageUrl,
           });
         } else {
