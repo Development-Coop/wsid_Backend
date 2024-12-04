@@ -30,7 +30,6 @@ const uploadValidator = () => (req, res, next) => {
       //  return error(res, "No files uploaded.", [], 400);
       //}
 
-      console.log(`[UPLOAD VALIDATOR] ${req.files.length} file(s) uploaded successfully.`);
       next();
     });
   } catch (err) {

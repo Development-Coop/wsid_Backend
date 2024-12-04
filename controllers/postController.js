@@ -1,5 +1,4 @@
 const db = require('../db/init');
-const admin = require('firebase-admin');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/firebase_storage');
@@ -60,6 +59,9 @@ const createPost = async (req, res) => {
 
 const updatePost = async (req, res) => {
   const { id: postId } = req.params;
+  if (Object.keys(req.body).length === 0 && !req.files) {
+    return success(res, { postId }, "No updates provided");
+  }
   const { title, description, options: rawOptions, deleteImages: deleteImagesRaw, deleteOptions: deleteOptionsRaw } = req.body;
 
   try {
@@ -431,131 +433,6 @@ const searchPost = async (req, res) => {
   }
 };
 
-const castVote = async (req, res) => {
-  const { postId, optionId } = req.body;
-
-  // Validate inputs
-  if (!postId || !optionId) {
-    return res.status(400).json({ error: "postId and optionId are required." });
-  }
-
-  try {
-    // Create the vote object
-    const newVote = {
-      postId,
-      optionId,
-      userId: req.user?.uid || null,
-      createdAt: new Date(),
-    };
-
-    // Add the vote to the Firestore database
-    const voteRef = await db.collection('votes').add(newVote);
-
-    // Increment vote count for the option
-    const optionRef = db.collection('options').doc(optionId);
-    await optionRef.update({
-      votesCount: admin.firestore.FieldValue.increment(1)
-    });
-
-    return res.status(201).json({ id: voteRef.id, ...newVote });
-  } catch (err) {
-    console.error("Error casting vote:", err.message);
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-const deleteVote = async (req, res) => {
-  const { postId, optionId } = req.body;
-
-  // Validate inputs
-  if (!postId || !optionId) {
-    return res.status(400).json({ error: "postId and optionId are required." });
-  }
-
-  try {
-    // Check if the vote exists in the database
-    const voteQuerySnapshot = await db
-      .collection('votes')
-      .where('postId', '==', postId)
-      .where('optionId', '==', optionId)
-      .where('userId', '==', req.user?.uid) 
-      .get();
-
-    if (voteQuerySnapshot.empty) {
-      return res.status(404).json({ error: "Vote not found." });
-    }
-
-    // Get the vote document
-    const voteDoc = voteQuerySnapshot.docs[0];
-    
-    // Delete the vote document
-    await voteDoc.ref.delete();
-
-    // Decrement the vote count for the option
-    const optionRef = db.collection('options').doc(optionId);
-    await optionRef.update({
-      votesCount: admin.firestore.FieldValue.increment(-1), // Decrement by 1
-    });
-
-    return res.status(200).json({ message: "Vote removed successfully." });
-  } catch (err) {
-    console.error("Error deleting vote:", err.message);
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-const createComment = async (req, res) => {
-  const { postId, text } = req.body;
-
-  try {
-    const newComment = {
-      postId,
-      text,
-      createdBy: req.user?.uid || null,
-      createdAt: new Date(),
-      likes: [],
-      likesCount: 0,
-    };
-
-    const commentRef = await db.collection('comments').add(newComment);
-    return res.status(201).json({ id: commentRef.id, ...newComment });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-const likeComment = async (req, res) => {
-  const { commentId } = req.params;
-
-  try {
-    const commentRef = db.collection('comments').doc(commentId);
-    await commentRef.update({
-      likes: admin.firestore.FieldValue.arrayUnion(req.user?.uid),
-      likesCount: admin.firestore.FieldValue.increment(1),
-    });
-
-    return res.status(200).json({ message: "Comment liked successfully" });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
-const unlikeComment = async (req, res) => {
-  const { commentId } = req.params;
-
-  try {
-    const commentRef = db.collection('comments').doc(commentId);
-    await commentRef.update({
-      likes: admin.firestore.FieldValue.arrayRemove(req.user?.uid),
-      likesCount: admin.firestore.FieldValue.increment(-1),
-    });
-
-    return res.status(200).json({ message: "Comment unliked successfully" });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
-
 const trendingPosts = async (req, res) => {
   try {
     const oneWeekAgo = new Date();
@@ -662,10 +539,5 @@ module.exports = {
   updatePost,
   deletePost,
   searchPost,
-  castVote,
-  deleteVote,
-  createComment,
-  likeComment,
-  unlikeComment,
   trendingPosts
 };

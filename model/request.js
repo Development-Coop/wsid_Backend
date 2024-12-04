@@ -111,6 +111,30 @@ const subscribeSchema = Joi.object({
   email: Joi.string().email().required()
 })
 
+const voteSchema = Joi.object({
+  postId: Joi.string().required(),
+  optionId: Joi.string().required()
+})
+
+const createCommentSchema = Joi.object({
+  postId: Joi.string().required(),
+  text: Joi.string().required()
+})
+
+const editCommentSchema = Joi.object({
+  text: Joi.string().required()
+})
+
+const createPostSchema = Joi.object({
+  title: Joi.string().required(),
+  description: Joi.string().required(),
+  options: Joi.string().required()
+});
+
+const searchPostSchema = Joi.object({
+  query: Joi.string().min(3).required()
+});
+
 module.exports = {
   registerSchemaStep1,
   registerSchemaStep2,
@@ -122,5 +146,10 @@ module.exports = {
   resetPasswordSchema,
   refreshAccessTokenSchema,
   editProfileSchema,
-  subscribeSchema
+  subscribeSchema,
+  voteSchema,
+  createCommentSchema,
+  editCommentSchema,
+  createPostSchema,
+  searchPostSchema
 };
