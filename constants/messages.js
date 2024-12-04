@@ -34,6 +34,8 @@ module.exports = {
   NO_USERS_FOUND: 'No users found!',
   USER_NOT_FOUND: 'User not found!',
   POST_NOT_FOUND: 'Post not found!',
+  VOTE_NOT_FOUND: 'vote not found!',
+  COMMENT_NOT_FOUND: 'Comment not found!',
   UNAUTHORISED_ACCESS: 'You\'re not authorized to perform this operation',
   INVALID_OPTIONS_FORMAT: 'Invalid options format',
   SUBSCRITION_SUCCESS: 'You\'ve been successfully added to our waitlist! We’ll keep you updated with the latest news.',
