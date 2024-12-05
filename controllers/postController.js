@@ -333,10 +333,24 @@ const getPostById = async (req, res) => {
 
     // Get options related to the post
     const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
-    const options = optionsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Check if the logged-in user has already voted for each option
+    const options = await Promise.all(
+      optionsSnapshot.docs.map(async (doc) => {
+        const option = doc.data();
+        const votesSnapshot = await db
+          .collection('votes')
+          .where('optionId', '==', doc.id)
+          .where('userId', '==', req.user?.uid)
+          .get();
+
+        const hasVoted = !votesSnapshot.empty; // If a vote exists, the user has voted
+        return {
+          id: doc.id,
+          ...option,
+          hasVoted, // Include the vote status for the logged-in user
+        };
+      })
+    );
 
     // Get comments related to the post
     //const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
