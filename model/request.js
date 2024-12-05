@@ -118,7 +118,8 @@ const voteSchema = Joi.object({
 
 const createCommentSchema = Joi.object({
   postId: Joi.string().required(),
-  text: Joi.string().required()
+  text: Joi.string().required(),
+  parentId: Joi.string().optional()
 })
 
 const editCommentSchema = Joi.object({

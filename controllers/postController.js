@@ -339,15 +339,15 @@ const getPostById = async (req, res) => {
     }));
 
     // Get comments related to the post
-    const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
-    const comments = commentsSnapshot.docs.map((doc) => {
-      const commentData = doc.data();
-      return {
-        id: doc.id,
-        ...commentData,
-        createdAt: commentData.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
-      };
-    });
+    //const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+    //const comments = commentsSnapshot.docs.map((doc) => {
+    //  const commentData = doc.data();
+    //  return {
+    //    id: doc.id,
+    //    ...commentData,
+    //    createdAt: commentData.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
+    //  };
+    //});
 
     return success(
       res,
@@ -355,7 +355,7 @@ const getPostById = async (req, res) => {
         ...formattedPost,
         user,
         options,
-        comments,
+        //comments,
       },
       messages.SUCCESS
     );
