@@ -14,7 +14,9 @@ const createComment = async (req, res) => {
       createdBy: req.user?.uid || null,
       createdAt: new Date(),
       likes: [],
+      dislikes: [],
       likesCount: 0,
+      dislikesCount: 0,
       replies: [], // Only relevant for parent comments
     };
 
@@ -122,15 +124,123 @@ const cascadeDeleteComments = async (parentId) => {
   await db.collection('comments').doc(parentId).delete();
 };
 
+const getAllComment = async (req, res) => {
+  const { postId } = req.params;
+
+  try {
+    const commentsSnapshot = await db
+      .collection('comments')
+      .where('postId', '==', postId)
+      .where('parentId', '==', null)
+      .orderBy('createdAt', 'asc')
+      .get();
+
+    const comments = [];
+
+    for (const doc of commentsSnapshot.docs) {
+      const commentData = doc.data();
+      const userId = commentData.createdBy;
+
+      // Format createdAt to milliseconds
+      const createdAtMillis = commentData.createdAt._seconds * 1000 + Math.floor(commentData.createdAt._nanoseconds / 1000000);
+
+      // Fetch user details
+      const userDoc = await db.collection('users').doc(userId).get();
+      const user = userDoc.exists
+        ? {
+            id: userDoc.id,
+            name: userDoc.data().name,
+            profilePicUrl: userDoc.data().profilePicUrl,
+          }
+        : null;
+
+      const comment = {
+        ...commentData,
+        id: doc.id,
+        createdAt: createdAtMillis,
+        createdBy: user,
+        likesCount: (commentData.likes || []).length,
+        dislikesCount: (commentData.dislikes || []).length,
+        replies: await getNestedReplies(doc.id),
+      };
+
+      comments.push(comment);
+    }
+
+    return success(res, comments, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const getNestedReplies = async (parentId) => {
+  const repliesSnapshot = await db
+    .collection('comments')
+    .where('parentId', '==', parentId)
+    .orderBy('createdAt', 'asc')
+    .get();
+
+  const replies = [];
+  for (const doc of repliesSnapshot.docs) {
+    const replyData = doc.data();
+    const userId = replyData.createdBy;
+
+    // Format createdAt to milliseconds
+    const createdAtMillis = replyData.createdAt._seconds * 1000 + Math.floor(replyData.createdAt._nanoseconds / 1000000);
+
+    // Fetch user details
+    const userDoc = await db.collection('users').doc(userId).get();
+    const user = userDoc.exists
+      ? {
+          id: userDoc.id,
+          name: userDoc.data().name,
+          profilePicUrl: userDoc.data().profilePicUrl,
+        }
+      : null;
+
+    const reply = {
+      ...replyData,
+      id: doc.id,
+      createdAt: createdAtMillis,
+      createdBy: user,
+      likesCount: (replyData.likes || []).length,
+      dislikesCount: (replyData.dislikes || []).length,
+      replies: await getNestedReplies(doc.id),
+    };
+
+    replies.push(reply);
+  }
+
+  return replies;
+};
+
 const likeComment = async (req, res) => {
   const { id: commentId } = req.params;
 
   try {
     const commentRef = db.collection('comments').doc(commentId);
-    await commentRef.update({
-      likes: admin.firestore.FieldValue.arrayUnion(req.user?.uid),
-      likesCount: admin.firestore.FieldValue.increment(1),
-    });
+    const commentDoc = await commentRef.get();
+
+    if (!commentDoc.exists) {
+      return error(res, messages.COMMENT_NOT_FOUND, [], 404);
+    }
+
+    const comment = commentDoc.data();
+    const userId = req.user?.uid;
+
+    if (comment.likes.includes(userId)) {
+      // Undo like
+      await commentRef.update({
+        likes: admin.firestore.FieldValue.arrayRemove(userId),
+        likesCount: admin.firestore.FieldValue.increment(-1),
+      });
+    } else {
+      // Like the comment
+      await commentRef.update({
+        likes: admin.firestore.FieldValue.arrayUnion(userId),
+        likesCount: admin.firestore.FieldValue.increment(1),
+      });
+    }
 
     return success(res, {}, messages.SUCCESS);
   } catch (err) {
@@ -138,17 +248,67 @@ const likeComment = async (req, res) => {
   }
 };
 
-const unlikeComment = async (req, res) => {
+const dislikeComment = async (req, res) => {
   const { id: commentId } = req.params;
 
   try {
     const commentRef = db.collection('comments').doc(commentId);
-    await commentRef.update({
-      likes: admin.firestore.FieldValue.arrayRemove(req.user?.uid),
-      likesCount: admin.firestore.FieldValue.increment(-1),
-    });
+    const commentDoc = await commentRef.get();
+
+    if (!commentDoc.exists) {
+      return error(res, messages.COMMENT_NOT_FOUND, [], 404);
+    }
+
+    const comment = commentDoc.data();
+    const userId = req.user?.uid;
+
+    if (comment.dislikes.includes(userId)) {
+      // Undo dislike
+      await commentRef.update({
+        dislikes: admin.firestore.FieldValue.arrayRemove(userId),
+        dislikesCount: admin.firestore.FieldValue.increment(-1),
+      });
+    } else {
+      // Dislike the comment
+      await commentRef.update({
+        dislikes: admin.firestore.FieldValue.arrayUnion(userId),
+        dislikesCount: admin.firestore.FieldValue.increment(1),
+      });
+    }
 
     return success(res, {}, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
+const getLikesDislikesDetails = async (req, res) => {
+  const { commentId, type } = req.params; // type can be 'likes' or 'dislikes'
+
+  try {
+    const commentDoc = await db.collection('comments').doc(commentId).get();
+
+    if (!commentDoc.exists) {
+      return error(res, messages.COMMENT_NOT_FOUND, [], 404);
+    }
+
+    const commentData = commentDoc.data();
+    const userIds = commentData[type] || []; // 'likes' or 'dislikes'
+
+    const userDetails = await Promise.all(
+      userIds.map(async (userId) => {
+        const userDoc = await db.collection('users').doc(userId).get();
+        return userDoc.exists
+          ? {
+              id: userDoc.id,
+              name: userDoc.data().name,
+              profilePicUrl: userDoc.data().profilePicUrl,
+            }
+          : null;
+      })
+    );
+
+    return success(res, userDetails.filter(Boolean), messages.SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
   }
@@ -158,6 +318,8 @@ module.exports = {
   createComment,
   updateComment,
   deleteComment,
+  getAllComment,
   likeComment,
-  unlikeComment
+  dislikeComment,
+  getLikesDislikesDetails
 };
