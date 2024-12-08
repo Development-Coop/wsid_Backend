@@ -126,6 +126,7 @@ const cascadeDeleteComments = async (parentId) => {
 
 const getAllComment = async (req, res) => {
   const { postId } = req.params;
+  const loggedInUserId = req.user.uid;
 
   try {
     const commentsSnapshot = await db
@@ -154,6 +155,11 @@ const getAllComment = async (req, res) => {
           }
         : null;
 
+      // Check if the logged-in user has liked or disliked the current reply
+      const hasLiked = commentData.likes && commentData.likes.includes(loggedInUserId);
+      const hasDisliked = commentData.dislikes && commentData.dislikes.includes(loggedInUserId);
+
+      // Create the comment object
       const comment = {
         ...commentData,
         id: doc.id,
@@ -161,7 +167,9 @@ const getAllComment = async (req, res) => {
         createdBy: user,
         likesCount: (commentData.likes || []).length,
         dislikesCount: (commentData.dislikes || []).length,
-        replies: await getNestedReplies(doc.id),
+        hasLiked,
+        hasDisliked,
+        replies: await getNestedReplies(doc.id, loggedInUserId),
       };
 
       comments.push(comment);
@@ -173,7 +181,7 @@ const getAllComment = async (req, res) => {
   }
 };
 
-const getNestedReplies = async (parentId) => {
+const getNestedReplies = async (parentId, loggedInUserId) => {
   const repliesSnapshot = await db
     .collection('comments')
     .where('parentId', '==', parentId)
@@ -198,6 +206,10 @@ const getNestedReplies = async (parentId) => {
         }
       : null;
 
+    // Check if the logged-in user has liked or disliked the current reply
+    const hasLiked = replyData.likes && replyData.likes.includes(loggedInUserId);
+    const hasDisliked = replyData.dislikes && replyData.dislikes.includes(loggedInUserId);
+
     const reply = {
       ...replyData,
       id: doc.id,
@@ -205,7 +217,9 @@ const getNestedReplies = async (parentId) => {
       createdBy: user,
       likesCount: (replyData.likes || []).length,
       dislikesCount: (replyData.dislikes || []).length,
-      replies: await getNestedReplies(doc.id),
+      hasLiked,
+      hasDisliked,
+      replies: await getNestedReplies(doc.id, loggedInUserId),
     };
 
     replies.push(reply);

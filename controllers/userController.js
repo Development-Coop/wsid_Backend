@@ -177,6 +177,7 @@ const editProfile = async (req, res) => {
 
 const viewProfile = async (req, res) => {
   const uid = req.query.uid || req.user.uid;
+  const loggedInUserId = req.user.uid;
   try {
     // Fetch the user's profile details
     const userDoc = await db.collection('users').doc(uid).get();
@@ -220,8 +221,25 @@ const viewProfile = async (req, res) => {
       },
       likesCount,
       followersCount,
-      followingCount,
+      followingCount
     }
+
+    if(req.query.uid){
+      // Check if the logged-in user has liked this profile
+      const hasLikedSnapshot = await db.collection('likes')
+        .where('targetUserId', '==', uid)
+        .where('userId', '==', loggedInUserId)
+        .get();
+        data.hasLiked = !hasLikedSnapshot.empty;
+
+      // Check if the logged-in user is following this profile
+      const isFollowingSnapshot = await db.collection('followers')
+        .where('followingId', '==', uid)
+        .where('followerId', '==', loggedInUserId)
+        .get();
+      data.isFollowing = !isFollowingSnapshot.empty;
+    }
+
     return success(res, data, messages.SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
@@ -305,6 +323,7 @@ const followProfile = async (req, res) => {
 const searchUsers = async (req, res) => {
   try {
     const { query } = req.query;
+    const loggedInUserId = req.user.uid;
 
     // Ensure query is provided and has a length of at least 3
     if (!query || query.length < 3) {
@@ -312,9 +331,9 @@ const searchUsers = async (req, res) => {
     }
 
     // Perform Firestore queries
-    const nameQuery = db.collection('users').where('name', '>=', query).where('name', '<=', query + '\uf8ff');
-    const usernameQuery = db.collection('users').where('username', '>=', query).where('username', '<=', query + '\uf8ff');
-    const emailQuery = db.collection('users').where('email', '>=', query).where('email', '<=', query + '\uf8ff');
+    const nameQuery = db.collection('users').where('name', '>=', query).where('name', '<=', query + '\uf8ff').limit(20);
+    const usernameQuery = db.collection('users').where('username', '>=', query).where('username', '<=', query + '\uf8ff').limit(20);
+    const emailQuery = db.collection('users').where('email', '>=', query).where('email', '<=', query + '\uf8ff').limit(20);
 
     // Fetch results
     const [nameSnapshot, usernameSnapshot, emailSnapshot] = await Promise.all([
@@ -342,6 +361,15 @@ const searchUsers = async (req, res) => {
 
     // Convert Map values to an array
     const users = Array.from(usersMap.values());
+
+    for (const user of users) {
+      // Check if the logged-in user is following this user
+      const isFollowingSnapshot = await db.collection('followers')
+        .where('followingId', '==', user.id)
+        .where('followerId', '==', loggedInUserId)
+        .get();
+      user.isFollowing = !isFollowingSnapshot.empty;
+    }
 
     return success(res, users, messages.SUCCESS);
   } catch (err) {
