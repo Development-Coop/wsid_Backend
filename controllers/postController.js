@@ -223,6 +223,7 @@ const deletePost = async (req, res) => {
 const getAllPosts = async (req, res) => {
   try {
     // Extract query parameters
+    const uid = req.query.uid || req.user.uid;
     const listAll = req.query.all === 'true';
     const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query;
 
@@ -237,12 +238,16 @@ const getAllPosts = async (req, res) => {
                         .orderBy(sortBy, order)
     }else{
       query = db.collection('posts')
-              .where('createdBy', '==', req.user?.uid || null)
+              .where('createdBy', '==', uid || null)
               .orderBy(sortBy, order)
     }
 
     // Fetch the total number of posts for pagination metadata
-    const totalSnapshot = await db.collection('posts').get();
+    const totalQuery = listAll
+      ? db.collection('posts')
+      : db.collection('posts').where('createdBy', '==', uid || null);
+
+    const totalSnapshot = await totalQuery.get();
     const totalPosts = totalSnapshot.size;
 
     // Add pagination to the query
