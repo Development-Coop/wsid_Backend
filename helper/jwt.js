@@ -4,7 +4,7 @@ const { error } = require('../model/response');
 
 const generateToken = (user) => {
   return jwt.sign(
-    { uid: user.uid, email: user.email },
+    { uid: user.uid, email: user.email, role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: '1h' }
   );

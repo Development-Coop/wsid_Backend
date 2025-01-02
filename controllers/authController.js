@@ -147,6 +147,8 @@ const registerStep3 = async (req, res) => {
       profilePicUrl,
       bio,
       password: hashedPassword,
+      status: true,
+      role: 'user',
       createdAt: new Date(),
     });
 
@@ -278,7 +280,7 @@ const generateUsernames = async (req, res) => {
   }
 };
 
-const login = async (req, res) => {
+const login = async (req, res, isAdmin = false) => {
   try {
     const { emailOrUsername, password } = req.body;
     let user;
@@ -305,13 +307,26 @@ const login = async (req, res) => {
     const userDoc = await db.collection('users').doc(user.uid).get();
     const userData = userDoc.data();
 
+    if (!userData || userData.status !== true) {
+      return error(res, messages.INVALID_CREDENTIALS); // Handle inactive or non-existent users
+    }
+
+    // Check if the login type matches the user's role
+    if (isAdmin && userData.role !== 'admin') {
+      return error(res, messages.UNAUTHORISED_ACCESS); // User is not an admin
+    }
+
     const isMatch = await bcrypt.compare(password, userData.password);
     if (!isMatch) {
       return error(res, messages.INVALID_CREDENTIALS);
     }
 
     // Generate accessToken and refreshToken
-    const accessToken = generateToken(user);
+    const accessToken = generateToken({
+      uid: user.uid,
+      email: user.email,
+      role: userData.role,
+    });
     const refreshToken = generateRefreshToken(user);
 
     // Save the refresh token
@@ -418,6 +433,8 @@ const googleSignIn = async (req, res) => {
       await db.collection('users').doc(uid).set({
         name,
         email,
+        status: true,
+        role: 'user',
         createdAt: new Date(),
       });
     }
@@ -455,6 +472,8 @@ const appleSignIn = async (req, res) => {
       await db.collection('users').doc(uid).set({
         name,
         email,
+        status: true,
+        role: 'user',
         createdAt: new Date(),
       });
     }
