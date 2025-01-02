@@ -6,7 +6,7 @@ const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/fire
 
 const usersList = async (req, res) => {
   try {
-    const { email } = req.user;
+    const { email, role } = req.user;
     const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query; // Default values for pagination and sorting
 
     const limitValue = parseInt(limit, 10);
@@ -16,22 +16,30 @@ const usersList = async (req, res) => {
     const offset = (pageValue - 1) * limitValue;
 
     // Fetch the total count of users excluding the current user
-    const totalUsersSnapshot = await db
-      .collection('users')
-      .where('email', '!=', email)
-      .get();
+    let query = db.collection('users').where('email', '!=', email);
+
+    // Apply the status filter conditionally
+    if (role === 'user') {
+      query = query.where('status', '==', true);
+    }
+    const totalUsersSnapshot = await query.get();
     const totalUsers = totalUsersSnapshot.size;
 
     // Calculate total pages
     const totalPages = Math.ceil(totalUsers / limitValue);
 
     // Fetch users with sorting, excluding the current user
-    const userQuery = db
+    let userQuery = db
       .collection('users')
       .where('email', '!=', email)
       .orderBy(sortBy, order) // Sorting based on the query parameter
       .offset(offset)
       .limit(limitValue);
+
+    // Apply the status filter conditionally
+    if (role === 'user') {
+      userQuery = userQuery.where('status', '==', true);
+    }
 
     const userSnapshot = await userQuery.get();
 
@@ -58,12 +66,19 @@ const usersList = async (req, res) => {
       // Convert Firestore's timestamp to JavaScript Date object
       const createdAt = userData.createdAt ? userData.createdAt.toDate() : null;
 
-      users.push({
+      const userObject = {
         id: doc.id,
         name: userData.name,
         email: userData.email,
         createdAt,
-      });
+      };
+
+      // If the role is "admin", add the status field
+      if (role === "admin") {
+        userObject.status = userData.status;
+      }
+
+      users.push(userObject);
     });
 
     return success(
@@ -87,7 +102,11 @@ const usersList = async (req, res) => {
 const trendingUserList = async (req, res) => {
   try {
     const { email } = req.user;
-    const userSnapshot = await db.collection('users').where('email', '!=', email).limit(10).get();
+    const userSnapshot = await db.collection('users')
+    .where('email', '!=', email)
+    .where('status', '==', true)
+    .limit(10)
+    .get();
 
     const users = [];
     userSnapshot.forEach((doc) => {
@@ -186,6 +205,10 @@ const viewProfile = async (req, res) => {
     }
 
     const userData = userDoc.data();
+    // Check if the user has an active status
+    if (!userData.status && req.user.role === 'user') {
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
     const createdAt = new Date(userData.createdAt._seconds * 1000 + userData.createdAt._nanoseconds / 1000000).toISOString();
 
     // Fetch the count of likes on this user's profile
@@ -222,6 +245,11 @@ const viewProfile = async (req, res) => {
       likesCount,
       followersCount,
       followingCount
+    }
+
+    // Add the status field if the role is "admin"
+    if (req.user.role === "admin") {
+      data.user.status = userData.status;
     }
 
     if(req.query.uid){
@@ -331,9 +359,27 @@ const searchUsers = async (req, res) => {
     }
 
     // Perform Firestore queries
-    const nameQuery = db.collection('users').where('name', '>=', query).where('name', '<=', query + '\uf8ff').limit(20);
-    const usernameQuery = db.collection('users').where('username', '>=', query).where('username', '<=', query + '\uf8ff').limit(20);
-    const emailQuery = db.collection('users').where('email', '>=', query).where('email', '<=', query + '\uf8ff').limit(20);
+    let nameQuery = db.collection('users')
+      .where('name', '>=', query)
+      .where('name', '<=', query + '\uf8ff')
+      .limit(20);
+
+    let usernameQuery = db.collection('users')
+      .where('username', '>=', query)
+      .where('username', '<=', query + '\uf8ff')
+      .limit(20);
+
+    let emailQuery = db.collection('users')
+      .where('email', '>=', query)
+      .where('email', '<=', query + '\uf8ff')
+      .limit(20);
+
+    // Apply the status filter conditionally
+    if (req.user.role === 'user') {
+      nameQuery = nameQuery.where('status', '==', true);
+      usernameQuery = usernameQuery.where('status', '==', true);
+      emailQuery = emailQuery.where('status', '==', true);
+    }
 
     // Fetch results
     const [nameSnapshot, usernameSnapshot, emailSnapshot] = await Promise.all([
@@ -377,6 +423,33 @@ const searchUsers = async (req, res) => {
   }
 };
 
+const deleteUser = async (req, res) => {
+  try {
+    // Check if the user is an admin
+    if (req.user.role !== 'admin') {
+      return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
+    }
+
+    const { uid } = req.query;
+
+    // Fetch the user's profile
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
+
+    // Soft delete the user by setting status to false
+    await db.collection('users').doc(uid).update({
+      status: false,
+      updatedAt: new Date()
+    });
+
+    return success(res, {}, messages.SUCCESS);
+  } catch (err) {
+    return error(res, err.message, [], 500);
+  }
+};
+
 module.exports = { 
   usersList,
   trendingUserList,
@@ -384,5 +457,6 @@ module.exports = {
   viewProfile,
   likeProfile,
   followProfile,
-  searchUsers
+  searchUsers,
+  deleteUser
 };
