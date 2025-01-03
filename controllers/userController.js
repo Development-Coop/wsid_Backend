@@ -7,7 +7,7 @@ const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/fire
 const usersList = async (req, res) => {
   try {
     const { email, role } = req.user;
-    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query; // Default values for pagination and sorting
+    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
 
     const limitValue = parseInt(limit, 10);
     const pageValue = parseInt(page, 10);
@@ -15,76 +15,69 @@ const usersList = async (req, res) => {
     // Calculate the starting point for pagination
     const offset = (pageValue - 1) * limitValue;
 
-    // Fetch the total count of users excluding the current user
-    let query = db.collection('users').where('email', '!=', email);
+    // Base query excluding the current user
+    let baseQuery = db.collection('users').where('email', '!=', email);
 
     // Apply the status filter conditionally
     if (role === 'user') {
-      query = query.where('status', '==', true);
+      baseQuery = baseQuery.where('status', '==', true);
     }
-    const totalUsersSnapshot = await query.get();
-    const totalUsers = totalUsersSnapshot.size;
 
-    // Calculate total pages
+    // If a search query is provided, fetch matching users by name, email, or username
+    let searchResults = [];
+    if (search) {
+      const searchPromises = [
+        baseQuery.where('name', '>=', search).where('name', '<=', search + '\uf8ff').get(),
+        baseQuery.where('email', '>=', search).where('email', '<=', search + '\uf8ff').get(),
+        baseQuery.where('username', '>=', search).where('username', '<=', search + '\uf8ff').get(),
+      ];
+
+      const snapshots = await Promise.all(searchPromises);
+      snapshots.forEach((snapshot) => {
+        snapshot.forEach((doc) => {
+          const userData = doc.data();
+          if (!searchResults.some((user) => user.id === doc.id)) {
+            searchResults.push({ id: doc.id, ...userData });
+          }
+        });
+      });
+
+      // Sort results based on `sortBy` and `order`
+      searchResults.sort((a, b) => {
+        const aValue = a[sortBy];
+        const bValue = b[sortBy];
+        if (order === 'asc') return aValue > bValue ? 1 : -1;
+        return aValue < bValue ? 1 : -1;
+      });
+    } else {
+      // No search filter; fetch paginated users
+      const userSnapshot = await baseQuery
+        .orderBy(sortBy, order)
+        .offset(offset)
+        .limit(limitValue)
+        .get();
+
+      userSnapshot.forEach((doc) => {
+        searchResults.push({ id: doc.id, ...doc.data() });
+      });
+    }
+
+    // Calculate pagination details
+    const totalUsers = searchResults.length;
     const totalPages = Math.ceil(totalUsers / limitValue);
-
-    // Fetch users with sorting, excluding the current user
-    let userQuery = db
-      .collection('users')
-      .where('email', '!=', email)
-      .orderBy(sortBy, order) // Sorting based on the query parameter
-      .offset(offset)
-      .limit(limitValue);
-
-    // Apply the status filter conditionally
-    if (role === 'user') {
-      userQuery = userQuery.where('status', '==', true);
-    }
-
-    const userSnapshot = await userQuery.get();
-
-    if (userSnapshot.empty) {
-      return success(
-        res,
-        {
-          users: [],
-          pagination: {
-            currentPage: pageValue,
-            totalPages,
-            totalUsers,
-            pageSize: limitValue,
-          },
-        },
-        messages.NO_USERS_FOUND
-      );
-    }
-
-    const users = [];
-    userSnapshot.forEach((doc) => {
-      const userData = doc.data();
-
-      // Convert Firestore's timestamp to JavaScript Date object
-      const createdAt = userData.createdAt ? userData.createdAt.toDate() : null;
-
-      const userObject = {
-        id: doc.id,
-        name: userData.name,
-        email: userData.email,
-        createdAt,
-      };
-
-      // If the role is "admin", add the status field
-      if (role === "admin") {
-        userObject.status = userData.status;
-      }
-
-      users.push(userObject);
-    });
+    const paginatedResults = searchResults.slice(offset, offset + limitValue);
 
     return success(
       res,
       {
-        users,
+        users: paginatedResults.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          username: user.username,
+          createdAt: user.createdAt?.toDate() || null,
+          ...(role === 'admin' ? { status: user.status } : {}),
+        })),
         pagination: {
           currentPage: pageValue,
           totalPages,
@@ -359,27 +352,9 @@ const searchUsers = async (req, res) => {
     }
 
     // Perform Firestore queries
-    let nameQuery = db.collection('users')
-      .where('name', '>=', query)
-      .where('name', '<=', query + '\uf8ff')
-      .limit(20);
-
-    let usernameQuery = db.collection('users')
-      .where('username', '>=', query)
-      .where('username', '<=', query + '\uf8ff')
-      .limit(20);
-
-    let emailQuery = db.collection('users')
-      .where('email', '>=', query)
-      .where('email', '<=', query + '\uf8ff')
-      .limit(20);
-
-    // Apply the status filter conditionally
-    if (req.user.role === 'user') {
-      nameQuery = nameQuery.where('status', '==', true);
-      usernameQuery = usernameQuery.where('status', '==', true);
-      emailQuery = emailQuery.where('status', '==', true);
-    }
+    const nameQuery = db.collection('users').where('name', '>=', query).where('name', '<=', query + '\uf8ff').limit(20);
+    const usernameQuery = db.collection('users').where('username', '>=', query).where('username', '<=', query + '\uf8ff').limit(20);
+    const emailQuery = db.collection('users').where('email', '>=', query).where('email', '<=', query + '\uf8ff').limit(20);
 
     // Fetch results
     const [nameSnapshot, usernameSnapshot, emailSnapshot] = await Promise.all([
