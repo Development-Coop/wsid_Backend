@@ -25,6 +25,7 @@ const usersList = async (req, res) => {
 
     // If a search query is provided, fetch matching users by name, email, or username
     let searchResults = [];
+    let totalUsers = 0;
     if (search) {
       const searchPromises = [
         baseQuery.where('name', '>=', search).where('name', '<=', search + '\uf8ff').get(),
@@ -49,7 +50,11 @@ const usersList = async (req, res) => {
         if (order === 'asc') return aValue > bValue ? 1 : -1;
         return aValue < bValue ? 1 : -1;
       });
+      totalUsers = searchResults.length;
     } else {
+      const totalUsersSnapshot = await baseQuery.get();
+      totalUsers = totalUsersSnapshot.size;
+
       // No search filter; fetch paginated users
       const userSnapshot = await baseQuery
         .orderBy(sortBy, order)
@@ -63,7 +68,6 @@ const usersList = async (req, res) => {
     }
 
     // Calculate pagination details
-    const totalUsers = searchResults.length;
     const totalPages = Math.ceil(totalUsers / limitValue);
     const paginatedResults = searchResults.slice(offset, offset + limitValue);
 
@@ -227,7 +231,7 @@ const viewProfile = async (req, res) => {
       user: {
         id: userDoc.id,
         name: userData.name,
-        email: userDoc.email,
+        email: userData.email,
         dateOfBirth: userData.dateOfBirth,
         username: userData.username,
         profilePic: userData.profilePicUrl,
