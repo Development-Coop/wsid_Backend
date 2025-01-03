@@ -13,6 +13,7 @@ const {
   resetPassword,
   refreshAccessToken
 } = require('../controllers/authController');
+const { authenticateJWT } = require('../helper/jwt');
 const validateRequest = require('../helper/validator');
 const uploadValidator = require('../helper/multer');
 const { 
@@ -36,7 +37,7 @@ router.post('/username-suggestions', validateRequest(userNameSchema), generateUs
 router.post('/login', validateRequest(loginSchema), (req, res) => {
   login(req, res, false); // isAdmin = false
 });
-router.post('/logout', logout);
+router.post('/logout', validateRequest(refreshAccessTokenSchema), authenticateJWT, logout);
 router.post('/forgot-password', validateRequest(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validateRequest(resetPasswordSchema), resetPassword);
 router.post('/login-with-google', googleSignIn);
