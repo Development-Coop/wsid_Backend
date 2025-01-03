@@ -69,7 +69,7 @@ const usersList = async (req, res) => {
 
     // Calculate pagination details
     const totalPages = Math.ceil(totalUsers / limitValue);
-    const paginatedResults = searchResults.slice(offset, offset + limitValue);
+    const paginatedResults = search ? searchResults.slice(offset, offset + limitValue) : searchResults;
 
     return success(
       res,
