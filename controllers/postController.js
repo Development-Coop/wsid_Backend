@@ -192,7 +192,7 @@ const deletePost = async (req, res) => {
 
     // Ensure the logged-in user is the one who created the post or is authorized to update it
     const existingPost = postDoc.data();
-    if (existingPost.createdBy !== req.user?.uid) {
+    if (existingPost.createdBy !== req.user?.uid && req.user.role !== "admin") {
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
@@ -225,7 +225,7 @@ const getAllPosts = async (req, res) => {
     // Extract query parameters
     const uid = req.query.uid || req.user.uid;
     const listAll = req.query.all === 'true';
-    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc' } = req.query;
+    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
 
     // Calculate the starting point for pagination
     const pageNumber = parseInt(page, 10);
@@ -234,18 +234,26 @@ const getAllPosts = async (req, res) => {
 
     let query;
     if (listAll) {
+      query = db.collection('posts').orderBy(sortBy, order);
+    } else {
       query = db.collection('posts')
-                        .orderBy(sortBy, order)
-    }else{
-      query = db.collection('posts')
-              .where('createdBy', '==', uid || null)
-              .orderBy(sortBy, order)
+                .where('createdBy', '==', uid || null)
+                .orderBy(sortBy, order);
+    }
+
+    // Add search filter for title
+    if (search) {
+      query = query.where('title', '>=', search).where('title', '<=', search + '\uf8ff');
     }
 
     // Fetch the total number of posts for pagination metadata
-    const totalQuery = listAll
+    let totalQuery = listAll
       ? db.collection('posts')
       : db.collection('posts').where('createdBy', '==', uid || null);
+
+    if (search) {
+      totalQuery = totalQuery.where('title', '>=', search).where('title', '<=', search + '\uf8ff');
+    }
 
     const totalSnapshot = await totalQuery.get();
     const totalPosts = totalSnapshot.size;
@@ -357,24 +365,12 @@ const getPostById = async (req, res) => {
       })
     );
 
-    // Get comments related to the post
-    //const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
-    //const comments = commentsSnapshot.docs.map((doc) => {
-    //  const commentData = doc.data();
-    //  return {
-    //    id: doc.id,
-    //    ...commentData,
-    //    createdAt: commentData.createdAt?.toMillis() || null, // Convert Firestore Timestamp to JS timestamp
-    //  };
-    //});
-
     return success(
       res,
       {
         ...formattedPost,
         user,
         options,
-        //comments,
       },
       messages.SUCCESS
     );
