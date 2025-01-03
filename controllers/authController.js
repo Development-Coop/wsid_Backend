@@ -343,8 +343,31 @@ const login = async (req, res, isAdmin = false) => {
 };
 
 const logout = async (req, res) => {
+  const { refreshToken } = req.body;
+  const { uid } = req.user;
   try {
-    // Invalidate token if needed (usually handled by the client)
+    // Verify the refresh token
+    const decoded = verifyRefreshToken(refreshToken);
+    if (decoded.uid !== uid) {
+      return error(res, messages.INVALID_REFRESH_TOKEN, [], 400);
+    }
+
+    // Check if the refresh token exists in the database
+    const tokenQuery = await db.collection('refresh_tokens')
+      .where('refreshToken', '==', refreshToken)
+      .where('userId', '==', uid)
+      .get();
+    if (tokenQuery.empty) {
+      return error(res, messages.INVALID_REFRESH_TOKEN, [], 403);
+    }
+
+    // Delete the refresh token from the database
+    const batch = db.batch();
+    tokenQuery.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+
     return success(res, [], messages.LOGOUT_SUCCESS);
   } catch (err) {
     return error(res, err.message, [], 500);
