@@ -5,8 +5,7 @@ const {
 const {
     usersList,
     viewProfile,
-    deleteUser,
-    searchUsers
+    deleteUser
   } = require('../controllers/userController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -22,6 +21,5 @@ router.post('/login', validateRequest(loginSchema), (req, res) => {
 router.get('/user/list', authenticateJWT, usersList);
 router.get('/user/view', authenticateJWT, viewProfile);
 router.delete('/user/delete', authenticateJWT, deleteUser);
-router.get('/user/search', authenticateJWT, searchUsers);
 
 module.exports = router;
