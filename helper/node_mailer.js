@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
 const sendOtpToEmail = async (email, otp) => {
   try {
     const mailOptions = {
-      from: process.env.FROM_EMAIL, // Sender address (your email)
+      from: `"WSID" <${process.env.FROM_EMAIL}>`, // Sender address (your email)
       to: email, // Receiver email
       subject: 'Your OTP Code', // Subject line
       text: `Your OTP is: ${otp}`, // Plain text body

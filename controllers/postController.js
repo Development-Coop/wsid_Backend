@@ -192,7 +192,7 @@ const deletePost = async (req, res) => {
 
     // Ensure the logged-in user is the one who created the post or is authorized to update it
     const existingPost = postDoc.data();
-    if (existingPost.createdBy !== req.user?.uid && req.user.role !== "admin") {
+    if (existingPost.createdBy !== req.user?.uid && req.user.role === "user") {
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 

@@ -84,7 +84,7 @@ const deleteComment = async (req, res) => {
     const comment = commentDoc.data();
 
     // Ensure the logged-in user is authorized to delete the comment
-    if (comment.createdBy !== req.user?.uid) {
+    if (comment.createdBy !== req.user?.uid && req.user.role === "user") {
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
