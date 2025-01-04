@@ -12,6 +12,10 @@ const {
   getPostById,
   deletePost
 } = require('../controllers/postController');
+const {
+  getAllComment,
+  deleteComment
+} = require('../controllers/commentController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
 const {
@@ -30,5 +34,8 @@ router.delete('/user/delete', authenticateJWT, deleteUser);
 router.get('/post', authenticateJWT, getAllPosts);
 router.get('/post/:id', authenticateJWT, getPostById);
 router.delete('/post/:id', authenticateJWT, deletePost);
+
+router.get('/comment/:postId', authenticateJWT, getAllComment);
+router.delete('/comment/:id', authenticateJWT, deleteComment);
 
 module.exports = router;
