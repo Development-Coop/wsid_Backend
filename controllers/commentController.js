@@ -6,6 +6,13 @@ const { success, error } = require('../model/response');
 const createComment = async (req, res) => {
   const { postId, text, parentId } = req.body; // `parentId` is optional for nested comments
 
+
+  // add code by karan for comment limit should be 1000
+  //  messages.COMMENT_LENTH_VALIDATION this comes from message constants i will add this
+  if (!text && text.length > 1000) {
+    return error(res, messages.COMMENT_LENTH_VALIDATION, [], 400);
+  }
+
   try {
     const newComment = {
       postId,
@@ -40,6 +47,12 @@ const createComment = async (req, res) => {
 const updateComment = async (req, res) => {
   const { id: commentId } = req.params;
   const { text } = req.body;
+
+  // add code by karan for comment limit should be 1000
+  //  messages.COMMENT_LENTH_VALIDATION this comes from message constants i will add this
+  if (!text && text.length > 1000) {
+    return error(res, messages.COMMENT_LENTH_VALIDATION, [], 400);
+  }
 
   try {
     // Fetch the comment document
@@ -149,10 +162,10 @@ const getAllComment = async (req, res) => {
       const userDoc = await db.collection('users').doc(userId).get();
       const user = userDoc.exists
         ? {
-            id: userDoc.id,
-            name: userDoc.data().name,
-            profilePicUrl: userDoc.data().profilePicUrl,
-          }
+          id: userDoc.id,
+          name: userDoc.data().name,
+          profilePicUrl: userDoc.data().profilePicUrl,
+        }
         : null;
 
       // Check if the logged-in user has liked or disliked the current reply
@@ -200,10 +213,10 @@ const getNestedReplies = async (parentId, loggedInUserId) => {
     const userDoc = await db.collection('users').doc(userId).get();
     const user = userDoc.exists
       ? {
-          id: userDoc.id,
-          name: userDoc.data().name,
-          profilePicUrl: userDoc.data().profilePicUrl,
-        }
+        id: userDoc.id,
+        name: userDoc.data().name,
+        profilePicUrl: userDoc.data().profilePicUrl,
+      }
       : null;
 
     // Check if the logged-in user has liked or disliked the current reply
@@ -230,6 +243,7 @@ const getNestedReplies = async (parentId, loggedInUserId) => {
 
 const likeComment = async (req, res) => {
   const { id: commentId } = req.params;
+  const userId = req.user?.uid;
 
   try {
     const commentRef = db.collection('comments').doc(commentId);
@@ -240,21 +254,37 @@ const likeComment = async (req, res) => {
     }
 
     const comment = commentDoc.data();
-    const userId = req.user?.uid;
+
+    const updates = {};
 
     if (comment.likes.includes(userId)) {
-      // Undo like
-      await commentRef.update({
-        likes: admin.firestore.FieldValue.arrayRemove(userId),
-        likesCount: admin.firestore.FieldValue.increment(-1),
-      });
+      updates.likes = admin.firestore.FieldValue.arrayRemove(userId);
+      updates.likesCount = admin.firestore.FieldValue.increment(-1);
     } else {
-      // Like the comment
-      await commentRef.update({
-        likes: admin.firestore.FieldValue.arrayUnion(userId),
-        likesCount: admin.firestore.FieldValue.increment(1),
-      });
+      updates.likes = admin.firestore.FieldValue.arrayUnion(userId);
+      updates.likesCount = admin.firestore.FieldValue.increment(1);
+
+      // ✅ Remove dislike if it exists (can't like & dislike at same time)
+      if (comment.dislikes.includes(userId)) {
+        updates.dislikes = admin.firestore.FieldValue.arrayRemove(userId);
+        updates.dislikesCount = admin.firestore.FieldValue.increment(-1);
+      }
     }
+
+    await commentRef.update(updates);
+    // if (comment.likes.includes(userId)) {
+    //   // Undo like
+    //   await commentRef.update({
+    //     likes: admin.firestore.FieldValue.arrayRemove(userId),
+    //     likesCount: admin.firestore.FieldValue.increment(-1),
+    //   });
+    // } else {
+    //   // Like the comment
+    //   await commentRef.update({
+    //     likes: admin.firestore.FieldValue.arrayUnion(userId),
+    //     likesCount: admin.firestore.FieldValue.increment(1),
+    //   });
+    // }
 
     return success(res, {}, messages.SUCCESS);
   } catch (err) {
@@ -264,6 +294,7 @@ const likeComment = async (req, res) => {
 
 const dislikeComment = async (req, res) => {
   const { id: commentId } = req.params;
+  const userId = req.user?.uid;
 
   try {
     const commentRef = db.collection('comments').doc(commentId);
@@ -274,21 +305,37 @@ const dislikeComment = async (req, res) => {
     }
 
     const comment = commentDoc.data();
-    const userId = req.user?.uid;
+
+    const updates = {};
 
     if (comment.dislikes.includes(userId)) {
-      // Undo dislike
-      await commentRef.update({
-        dislikes: admin.firestore.FieldValue.arrayRemove(userId),
-        dislikesCount: admin.firestore.FieldValue.increment(-1),
-      });
+      updates.dislikes = admin.firestore.FieldValue.arrayRemove(userId);
+      updates.dislikesCount = admin.firestore.FieldValue.increment(-1);
     } else {
-      // Dislike the comment
-      await commentRef.update({
-        dislikes: admin.firestore.FieldValue.arrayUnion(userId),
-        dislikesCount: admin.firestore.FieldValue.increment(1),
-      });
+      updates.dislikes = admin.firestore.FieldValue.arrayUnion(userId);
+      updates.dislikesCount = admin.firestore.FieldValue.increment(1);
+
+      // ✅ Remove like if it exists
+      if (comment.likes.includes(userId)) {
+        updates.likes = admin.firestore.FieldValue.arrayRemove(userId);
+        updates.likesCount = admin.firestore.FieldValue.increment(-1);
+      }
     }
+
+    await commentRef.update(updates);
+    // if (comment.dislikes.includes(userId)) {
+    //   // Undo dislike
+    //   await commentRef.update({
+    //     dislikes: admin.firestore.FieldValue.arrayRemove(userId),
+    //     dislikesCount: admin.firestore.FieldValue.increment(-1),
+    //   });
+    // } else {
+    //   // Dislike the comment
+    //   await commentRef.update({
+    //     dislikes: admin.firestore.FieldValue.arrayUnion(userId),
+    //     dislikesCount: admin.firestore.FieldValue.increment(1),
+    //   });
+    // }
 
     return success(res, {}, messages.SUCCESS);
   } catch (err) {
@@ -314,10 +361,10 @@ const getLikesDislikesDetails = async (req, res) => {
         const userDoc = await db.collection('users').doc(userId).get();
         return userDoc.exists
           ? {
-              id: userDoc.id,
-              name: userDoc.data().name,
-              profilePicUrl: userDoc.data().profilePicUrl,
-            }
+            id: userDoc.id,
+            name: userDoc.data().name,
+            profilePicUrl: userDoc.data().profilePicUrl,
+          }
           : null;
       })
     );
@@ -328,7 +375,7 @@ const getLikesDislikesDetails = async (req, res) => {
   }
 };
 
-module.exports = { 
+module.exports = {
   createComment,
   updateComment,
   deleteComment,

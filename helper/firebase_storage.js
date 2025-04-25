@@ -6,6 +6,9 @@ const bucket = admin.storage().bucket();
 
 const uploadFileToFirebase = async (filePath, fileSrc) => {
     try {
+      if (!fileSrc || !fileSrc.buffer) {
+        return null; 
+      }
       // Create a unique file name if needed (optional)
       const fileName = `${filePath}/${Date.now()}${path.extname(fileSrc.originalname)}`;
       

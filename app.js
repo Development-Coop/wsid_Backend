@@ -5,11 +5,13 @@ const serverless = require('serverless-http');
 const routes = require('./routes/index');
 const app = express();
 
-// Enable CORS for all routes
+// CORS config
+// const allowedOrigins = ['http://localhost:9000'];
 app.use(cors());
 
+
 // Middleware
-app.use(express.json()); // To handle JSON request bodies
+app.use(express.json());
 
 // Routes
 app.use('/api', routes);
@@ -18,10 +20,10 @@ app.use('/', (req, res) => {
   res.send('Welcome to WSID REST API!');
 });
 
-// Export the app wrapped in serverless-http
+// Export wrapped server
 module.exports.handler = serverless(app);
 
-// If running locally, start the app on port 3000
+// Run locally if not production
 if (process.env.NODE_ENV !== 'production') {
   const port = process.env.PORT || 3000;
   app.listen(port, () => {

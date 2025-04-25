@@ -99,12 +99,15 @@ const registerStep2 = async (req, res) => {
 };
 
 const registerStep3 = async (req, res) => {
+  
+
   const { email, password, username, bio } = req.body;
   const files = req.files;
   try {
-    if (!files || files.length === 0) {
+    const profilePic = files?.find(file => file.fieldname === 'profilePic') || files?.[0];
+    if (profilePic) {
       return error(res, messages.PROFILE_PICTURE_ERROR, [], 400);
-    }
+    } 
 
     // Fetch the temporary user
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
@@ -281,6 +284,7 @@ const generateUsernames = async (req, res) => {
 };
 
 const login = async (req, res, isAdmin = false) => {
+  // console.log(req.body);
   try {
     const { emailOrUsername, password } = req.body;
     let user;
@@ -288,21 +292,24 @@ const login = async (req, res, isAdmin = false) => {
     if (emailOrUsername.includes('@')) {
       // It's an email
       user = await admin.auth().getUserByEmail(emailOrUsername);
+      // user = await db.collection("users").where("email","==",emailOrUsername).get();
+      console.log(user);
     } else {
       // It's a username, query Firestore to get the user by username
       const userSnapshot = await db.collection('users').where('username', '==', emailOrUsername).get();
+      // console.log(userSnapshot);
       
       if (userSnapshot.empty) {
         return error(res, messages.INVALID_CREDENTIALS);
       }
 
       const userDoc = userSnapshot.docs[0];
-      const userData = userDoc.data();
       
       // Fetch the user by their UID
       user = await admin.auth().getUser(userDoc.id);
     }
-
+    console.log(user);
+    
     // Check password (assuming you saved password hashes)
     const userDoc = await db.collection('users').doc(user.uid).get();
     const userData = userDoc.data();

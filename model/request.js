@@ -24,17 +24,17 @@ const registerSchemaStep3 = Joi.object({
     }),
   username: Joi.string()
     .min(3)
-    .max(15)
+    .max(20)
     .pattern(/^[a-zA-Z0-9](?!.*[._-]{2})[a-zA-Z0-9._-]{1,13}[a-zA-Z0-9]$/)
     .required()
     .messages({
       'string.min': 'Username must be at least 3 characters long.',
-      'string.max': 'Username cannot exceed 15 characters.',
+      'string.max': 'Username cannot exceed 20 characters.',
       'string.pattern.base': 'Username can only contain letters, numbers, underscores, hyphens, and periods, and must not have consecutive special characters or start/end with a special character.',
       'any.required': 'Username is required.'
     }),
   profilePic: Joi.any().optional(),
-  bio: Joi.string().optional(),
+  bio: Joi.string().optional()
 });
 
 const resendOtpSchema = Joi.object({
@@ -44,12 +44,12 @@ const resendOtpSchema = Joi.object({
 const userNameSchema = Joi.object({
   username: Joi.string()
     .min(3)
-    .max(15)
+    .max(20)
     .pattern(/^[a-zA-Z0-9](?!.*[._-]{2})[a-zA-Z0-9._-]{1,13}[a-zA-Z0-9]$/)
     .required()
     .messages({
       'string.min': 'Username must be at least 3 characters long.',
-      'string.max': 'Username cannot exceed 15 characters.',
+      'string.max': 'Username cannot exceed 20 characters.',
       'string.pattern.base': 'Username can only contain letters, numbers, underscores, hyphens, and periods, and must not have consecutive special characters or start/end with a special character.',
       'any.required': 'Username is required.'
     })

@@ -40,4 +40,5 @@ module.exports = {
   INVALID_OPTIONS_FORMAT: 'Invalid options format',
   SUBSCRITION_SUCCESS: 'You\'ve been successfully added to our waitlist! We’ll keep you updated with the latest news.',
   ALREADY_SUBSCRIBED: 'You\'re already on the waitlist! We’ll notify you as soon as we have updates.',
+  COMMENT_LENTH_VALIDATION: "Comment must be less then 1000 characters."
 };
