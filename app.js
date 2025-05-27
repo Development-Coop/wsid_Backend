@@ -6,7 +6,8 @@ const routes = require("./routes/index");
 const app = express();
 
 // CORS config
-const allowedOrigins = ["https://wsid.com", "http://localhost:9000"];
+// NOTE: Oliver added 9001 because 9000 was blocked on his computer
+const allowedOrigins = ["https://wsid.com", "http://localhost:9000", "http://localhost:9001"];
 app.use(
   cors({
     origin: function (origin, callback) {
