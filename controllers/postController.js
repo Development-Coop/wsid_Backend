@@ -263,25 +263,31 @@ const getAllPosts = async (req, res) => {
 
     // Execute query
     const postsSnapshot = await query.get();
+
     const postsPromises = postsSnapshot.docs.map(async (doc) => {
       const post = doc.data();
       const postId = doc.id;
-
-      // Convert Firestore Timestamp to JS timestamp
+    
       post.createdAt = post.createdAt?.toMillis() || null;
-
-      // Fetch user details
+    
       const userDoc = await db.collection('users').doc(post.createdBy).get();
       const user = userDoc.exists ? userDoc.data() : {};
-
-      // Fetch votes count
+    
       const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
       const votesCount = votesSnapshot.size;
-
-      // Fetch comments count
+    
       const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
       const commentsCount = commentsSnapshot.size;
-
+    
+      const userVoteSnapshot = await db
+        .collection('votes')
+        .where('postId', '==', postId)
+        .where('userId', '==', uid)
+        .limit(1)
+        .get();
+    
+      const hasVoted = !userVoteSnapshot.empty;
+    
       return {
         id: postId,
         ...post,
@@ -292,6 +298,7 @@ const getAllPosts = async (req, res) => {
         },
         votesCount,
         commentsCount,
+        hasVoted,
       };
     });
 
