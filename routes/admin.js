@@ -5,7 +5,7 @@ const {
 const {
   usersList,
   viewProfile,
-  deleteUser
+  adminDelete
 } = require('../controllers/userController');
 const {
   getAllPosts,
@@ -29,7 +29,7 @@ router.post('/login', validateRequest(loginSchema), (req, res) => {
 
 router.get('/user/list', authenticateJWT, usersList);
 router.get('/user/view', authenticateJWT, viewProfile);
-router.delete('/user/delete', authenticateJWT, deleteUser);
+router.delete('/user/delete', authenticateJWT, adminDelete);
 
 router.get('/post', authenticateJWT, getAllPosts);
 router.get('/post/:id', authenticateJWT, getPostById);

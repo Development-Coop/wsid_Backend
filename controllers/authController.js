@@ -9,28 +9,49 @@ const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 
 const registerStep1 = async (req, res) => {
+  console.log('=== RegisterStep1 Started ===');
   const { name, email, dateOfBirth } = req.body;
+  console.log('Request data:', { name, email, dateOfBirth });
+  
+  // Check environment variables
+  console.log('Environment check:');
+  console.log('- SENDGRID_API_KEY exists:', !!process.env.SENDGRID_API_KEY);
+  console.log('- FROM_EMAIL:', process.env.FROM_EMAIL);
+  console.log('- OTP_EXPIRATION_TIME:', process.env.OTP_EXPIRATION_TIME);
+  
   try {
+    console.log('Step 1: Checking if email exists in users collection...');
     // Check if the email already exists in the users collection
     const userSnapshot = await db.collection('users').where('email', '==', email).get();
+    console.log('Users collection check - Email exists:', !userSnapshot.empty);
+    
     if (!userSnapshot.empty) {
+      console.log('Email already exists in users collection - returning error');
       return error(res, messages.EMAIL_ALREADY_EXIST, [], 400);
     }
 
+    console.log('Step 2: Checking if email exists in temp_users collection...');
     // Check if the email already exists in the temp_users collection
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
     let tempUserDocId = null;
+    console.log('Temp users collection check - Email exists:', !tempUserSnapshot.empty);
     
     // If email exists, get the document ID to update the record
     if (!tempUserSnapshot.empty) {
       tempUserDocId = tempUserSnapshot.docs[0].id;
+      console.log('Found existing temp user with ID:', tempUserDocId);
     }
 
+    console.log('Step 3: Generating OTP...');
     // Generate OTP and update the expiry time
     const { otp, otpExpires } = generateOTP();
+    console.log('OTP generated:', otp);
+    console.log('OTP expires at:', otpExpires);
 
+    console.log('Step 4: Saving to temp_users collection...');
     // If tempUserDocId is found, update the existing document, otherwise create a new one
     if (tempUserDocId) {
+      console.log('Updating existing temp user document...');
       await db.collection('temp_users').doc(tempUserDocId).update({
         name,
         email,
@@ -40,8 +61,10 @@ const registerStep1 = async (req, res) => {
         otpSentCount: 1,
         updatedAt: new Date(),
       });
+      console.log('Successfully updated existing temp user');
     } else {
-      await db.collection('temp_users').add({
+      console.log('Creating new temp user document...');
+      const docRef = await db.collection('temp_users').add({
         name,
         email,
         dateOfBirth,
@@ -50,13 +73,33 @@ const registerStep1 = async (req, res) => {
         otpSentCount: 1,
         createdAt: new Date(),
       });
+      console.log('Successfully created new temp user with ID:', docRef.id);
     }
 
+    console.log('Step 5: About to send OTP email...');
+    console.log('Sending OTP to:', email);
+    console.log('OTP to send:', otp);
+    
     // Send OTP to the user's email using email service
     await sendOtpToEmail(email, otp);
+    console.log('OTP email sent successfully!');
 
+    console.log('Step 6: Sending success response...');
     return success(res, [], messages.OTP_SENT);
+    
   } catch (err) {
+    console.error('=== RegisterStep1 Error ===');
+    console.error('Error type:', err.constructor.name);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    
+    // Check if it's a SendGrid specific error
+    if (err.response) {
+      console.error('SendGrid response error:');
+      console.error('- Status:', err.response.status);
+      console.error('- Body:', err.response.body);
+    }
+    
     return error(res, err.message, [], 500);
   }
 };
@@ -99,62 +142,95 @@ const registerStep2 = async (req, res) => {
 };
 
 const registerStep3 = async (req, res) => {
+  console.log('=== RegisterStep3 Started ===');
+  console.log('Request body:', req.body);
+  console.log('Request files:', req.files);
   
-
   const { email, password, username, bio } = req.body;
   const files = req.files;
+  
   try {
+    // Find the profile picture file (optional)
     const profilePic = files?.find(file => file.fieldname === 'profilePic') || files?.[0];
-    if (profilePic) {
-      return error(res, messages.PROFILE_PICTURE_ERROR, [], 400);
-    } 
+    console.log('Profile picture file:', profilePic ? 'Found' : 'Not found');
+    
+    // Check if required fields are present (only email, password, username are required)
+    if (!email || !password || !username) {
+      console.log('Missing required fields:', { email: !!email, password: !!password, username: !!username });
+      return error(res, 'Missing required fields: email, password, and username are required', [], 400);
+    }
 
+    console.log('Fetching temporary user...');
     // Fetch the temporary user
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
     if (tempUserSnapshot.empty) {
+      console.log('Temp user not found for email:', email);
       return error(res, messages.EMAIL_NOT_FOUND, [], 404);
     }
 
     const tempUser = tempUserSnapshot.docs[0].data();
+    console.log('Temp user found, otpVerified:', tempUser.otpVerified);
 
     // Check if the email was verified
     if (!tempUser.otpVerified) {
+      console.log('Email not verified');
       return error(res, messages.EMAIL_NOT_VERIFIED, [], 400);
     }
 
+    console.log('Checking username uniqueness...');
     // Check if the username is unique
     const userSnapshot = await db.collection('users').where('username', '==', username).get();
     if (!userSnapshot.empty) {
+      console.log('Username already exists:', username);
       return error(res, messages.USERNAME_EXIST, [], 400);
     }
 
-    // Handle profile picture upload if a file is provided
-    let profilePicUrl = await uploadFileToFirebase('user', files[0]);
+    // Handle profile picture upload (OPTIONAL)
+    let profilePicUrl = null;
+    if (profilePic) {
+      console.log('Uploading profile picture to Firebase...');
+      try {
+        profilePicUrl = await uploadFileToFirebase('profile', profilePic);
+        console.log('Profile picture uploaded successfully:', profilePicUrl);
+      } catch (uploadError) {
+        console.error('Profile picture upload failed:', uploadError);
+        // Don't return error for optional profile picture - just log and continue
+        console.log('Continuing registration without profile picture');
+        profilePicUrl = null;
+      }
+    } else {
+      console.log('No profile picture provided - continuing without profile picture');
+    }
 
+    console.log('Hashing password...');
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    console.log('Creating Firebase Auth user...');
     // Create the user in Firebase Authentication
     const userRecord = await admin.auth().createUser({
       email,
       password,
       displayName: username,
     });
+    console.log('Firebase Auth user created:', userRecord.uid);
 
+    console.log('Saving user data to Firestore...');
     // Save the user data to Firestore
     await db.collection('users').doc(userRecord.uid).set({
       name: tempUser.name,
       email: tempUser.email,
       dateOfBirth: tempUser.dateOfBirth,
       username,
-      profilePicUrl,
-      bio,
+      profilePicUrl: profilePicUrl || null, // Optional profile picture
+      bio: bio || '', // Optional bio (empty string if not provided)
       password: hashedPassword,
       status: true,
       role: 'user',
       createdAt: new Date(),
     });
 
+    console.log('Generating tokens...');
     // Generate accessToken
     const accessToken = generateToken({
       uid: userRecord.uid,
@@ -167,6 +243,7 @@ const registerStep3 = async (req, res) => {
       email: userRecord.email,
     });
 
+    console.log('Saving refresh token...');
     // Save the refresh token
     await db.collection('refresh_tokens').add({
       refreshToken,
@@ -174,11 +251,26 @@ const registerStep3 = async (req, res) => {
       createdAt: new Date(),
     });
 
+    console.log('Deleting temp user...');
     // Delete temporary user from `temp_users`
     await db.collection('temp_users').doc(tempUserSnapshot.docs[0].id).delete();
 
-    return success(res, { accessToken, refreshToken }, messages.USER_REGISTERED);
+    console.log('Registration completed successfully');
+    return success(res, { 
+      accessToken, 
+      refreshToken,
+      user: {
+        uid: userRecord.uid,
+        email: userRecord.email,
+        username: username,
+        name: tempUser.name,
+        profilePicUrl: profilePicUrl,
+        bio: bio || ''
+      }
+    }, messages.USER_REGISTERED);
   } catch (err) {
+    console.error('=== RegisterStep3 Error ===');
+    console.error('Error:', err);
     return error(res, err.message, [], 500);
   }
 };
@@ -284,50 +376,69 @@ const generateUsernames = async (req, res) => {
 };
 
 const login = async (req, res, isAdmin = false) => {
-  // console.log(req.body);
+  console.log('Login function started');
   try {
     const { emailOrUsername, password } = req.body;
+    console.log('Processing login for:', emailOrUsername);
+    
     let user;
 
     if (emailOrUsername.includes('@')) {
-      // It's an email
       user = await admin.auth().getUserByEmail(emailOrUsername);
-      // user = await db.collection("users").where("email","==",emailOrUsername).get();
-      console.log(user);
+      console.log('User found by email:', user.uid);
     } else {
-      // It's a username, query Firestore to get the user by username
       const userSnapshot = await db.collection('users').where('username', '==', emailOrUsername).get();
-      // console.log(userSnapshot);
       
       if (userSnapshot.empty) {
+        console.log('No user found with username:', emailOrUsername);
         return error(res, messages.INVALID_CREDENTIALS);
       }
 
       const userDoc = userSnapshot.docs[0];
-      
-      // Fetch the user by their UID
       user = await admin.auth().getUser(userDoc.id);
+      console.log('User found by username:', user.uid);
     }
-    console.log(user);
     
     // Check password (assuming you saved password hashes)
+    console.log('Fetching user document from Firestore...');
     const userDoc = await db.collection('users').doc(user.uid).get();
+    console.log('Firestore document exists:', userDoc.exists);
+    
+    if (!userDoc.exists) {
+      console.log('No Firestore document found for user:', user.uid);
+      return error(res, messages.INVALID_CREDENTIALS);
+    }
+    
     const userData = userDoc.data();
+    console.log('User data from Firestore:', userData);
 
     if (!userData || userData.status !== true) {
-      return error(res, messages.INVALID_CREDENTIALS); // Handle inactive or non-existent users
+      console.log('User inactive or missing status. Status:', userData?.status);
+      return error(res, messages.INVALID_CREDENTIALS);
     }
 
     // Check if the login type matches the user's role
     if (isAdmin && userData.role !== 'admin') {
-      return error(res, messages.UNAUTHORISED_ACCESS); // User is not an admin
+      console.log('Admin access denied for non-admin user');
+      return error(res, messages.UNAUTHORISED_ACCESS);
     }
 
+    // Check if user has a password
+    if (!userData.password) {
+      console.log('No password found in Firestore document');
+      return error(res, 'Account has no password set', [], 400);
+    }
+
+    console.log('Comparing passwords...');
     const isMatch = await bcrypt.compare(password, userData.password);
+    console.log('Password match:', isMatch);
+    
     if (!isMatch) {
+      console.log('Password mismatch');
       return error(res, messages.INVALID_CREDENTIALS);
     }
 
+    console.log('Generating tokens...');
     // Generate accessToken and refreshToken
     const accessToken = generateToken({
       uid: user.uid,
@@ -336,6 +447,7 @@ const login = async (req, res, isAdmin = false) => {
     });
     const refreshToken = generateRefreshToken(user);
 
+    console.log('Saving refresh token...');
     // Save the refresh token
     await db.collection('refresh_tokens').add({
       refreshToken,
@@ -343,8 +455,10 @@ const login = async (req, res, isAdmin = false) => {
       createdAt: new Date(),
     });
 
+    console.log('Login successful');
     return success(res, { accessToken, refreshToken }, messages.LOGIN_SUCCESS);
   } catch (err) {
+    console.error('Login error:', err);
     return error(res, err.message, [], 500);
   }
 };

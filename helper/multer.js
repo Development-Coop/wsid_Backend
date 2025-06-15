@@ -3,9 +3,12 @@ const { error } = require('../model/response');
 
 const multerConfig = {
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { 
+    fileSize: 5 * 1024 * 1024, // Increase to 5MB
+    fieldSize: 5 * 1024 * 1024  // Add field size limit
+  },
   fileFilter: (req, file, cb) => {
-    const allowedMimeTypes = ['image/jpeg', 'image/png'];
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {

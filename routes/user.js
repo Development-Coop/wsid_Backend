@@ -6,7 +6,8 @@ const {
   viewProfile,
   likeProfile,
   followProfile,
-  searchUsers
+  searchUsers,
+  userDelete
 } = require('../controllers/userController');
 const validateRequest = require('../helper/validator');
 const { authenticateJWT } = require('../helper/jwt');
@@ -23,5 +24,7 @@ router.get('/view', authenticateJWT, viewProfile);
 router.post('/like', authenticateJWT, likeProfile);
 router.post('/follow', authenticateJWT, followProfile);
 router.get('/search', authenticateJWT, searchUsers);
+router.get('/self-delete', authenticateJWT, userDelete);
+
 
 module.exports = router;

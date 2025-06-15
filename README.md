@@ -74,6 +74,7 @@ PORT=3000
 
 # JWT Configuration
 JWT_SECRET=your_jwt_secret_from_production
+REFRESH_TOKEN_SECRET=your_refresh_token_from_production
 
 # Firebase Configuration
 FIREBASE_PROJECT_ID=your_firebase_project_id
@@ -83,7 +84,7 @@ FIREBASE_BUCKET=your_firebase_bucket
 
 # Email Configuration
 MAX_ALLOWED_OTP_RESENDS=3
-OTP_EXPIRATION_TIME=5
+OTP_EXPIRATION_TIME=10
 SENDGRID_API_KEY=your_sendgrid_api_key
 FROM_EMAIL=your_from_email
 ```
