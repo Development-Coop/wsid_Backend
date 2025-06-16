@@ -16,10 +16,16 @@ console.log('isLocalDevelopment:', isLocalDevelopment);
 let credential;
 
 if (isLocalDevelopment) {
-    // Use service account file for local development
-    const serviceAccount = require('../db/serviceAccountKey.json');
-    credential = admin.credential.cert(serviceAccount);
-    console.log('Using service account file for Firebase authentication');
+    // Use dynamic import or fs.readFileSync to avoid bundling issues
+    try {
+        const serviceAccountData = fs.readFileSync(serviceAccountPath, 'utf8');
+        const serviceAccount = JSON.parse(serviceAccountData);
+        credential = admin.credential.cert(serviceAccount);
+        console.log('Using service account file for Firebase authentication');
+    } catch (error) {
+        console.error('Error reading service account file:', error);
+        throw error;
+    }
 } else {
     // Use environment variables for production
     credential = admin.credential.cert({
