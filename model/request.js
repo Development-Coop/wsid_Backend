@@ -34,7 +34,7 @@ const registerSchemaStep3 = Joi.object({
       'any.required': 'Username is required.'
     }),
   profilePic: Joi.any().optional(),
-  bio: Joi.string().optional()
+  bio: Joi.string().allow('').optional()
 });
 
 const resendOtpSchema = Joi.object({
@@ -104,7 +104,7 @@ const editProfileSchema = Joi.object({
       'any.required': 'Username is required.'
     }),
   profilePic: Joi.any().optional(),
-  bio: Joi.string().optional()
+  bio: Joi.string().allow('').optional()
 });
 
 const subscribeSchema = Joi.object({

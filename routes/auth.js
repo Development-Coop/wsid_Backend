@@ -5,6 +5,7 @@ const {
   registerStep3,
   resendOtp,
   generateUsernames,
+  validateUsername, // Add this import
   login,
   googleSignIn,
   appleSignIn,
@@ -34,6 +35,7 @@ router.post('/register-step2', validateRequest(registerSchemaStep2), registerSte
 router.post('/register-step3', uploadValidator(), validateRequest(registerSchemaStep3), registerStep3);
 router.post('/resend-otp', validateRequest(resendOtpSchema), resendOtp);
 router.post('/username-suggestions', validateRequest(userNameSchema), generateUsernames);
+router.post('/validate-username', validateRequest(userNameSchema), validateUsername); // Add this line
 router.post('/login', validateRequest(loginSchema), (req, res) => {
   login(req, res, false); // isAdmin = false
 });

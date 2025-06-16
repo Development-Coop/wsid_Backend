@@ -10,7 +10,11 @@ const { success, error } = require('../model/response');
 
 const registerStep1 = async (req, res) => {
   console.log('=== RegisterStep1 Started ===');
-  const { name, email, dateOfBirth } = req.body;
+  let { name, email, dateOfBirth } = req.body;
+  
+  // Normalize email to lowercase at the very beginning
+  email = email.toLowerCase().trim();
+  
   console.log('Request data:', { name, email, dateOfBirth });
   
   // Check environment variables
@@ -54,7 +58,7 @@ const registerStep1 = async (req, res) => {
       console.log('Updating existing temp user document...');
       await db.collection('temp_users').doc(tempUserDocId).update({
         name,
-        email,
+        email, // Now using normalized email
         dateOfBirth,
         otp,
         otpExpires,
@@ -66,7 +70,7 @@ const registerStep1 = async (req, res) => {
       console.log('Creating new temp user document...');
       const docRef = await db.collection('temp_users').add({
         name,
-        email,
+        email, // Now using normalized email
         dateOfBirth,
         otp,
         otpExpires,
@@ -105,7 +109,10 @@ const registerStep1 = async (req, res) => {
 };
 
 const registerStep2 = async (req, res) => {
-  const { email, otp } = req.body;
+  let { email, otp } = req.body;
+
+  email = email.toLowerCase().trim();
+
   try {
     // Fetch the temporary user from the database
     const tempUserSnapshot = await db.collection('temp_users').where('email', '==', email).get();
@@ -146,7 +153,10 @@ const registerStep3 = async (req, res) => {
   console.log('Request body:', req.body);
   console.log('Request files:', req.files);
   
-  const { email, password, username, bio } = req.body;
+  let { email, password, username, bio } = req.body;
+
+  email = email.toLowerCase().trim();
+
   const files = req.files;
   
   try {
@@ -275,8 +285,29 @@ const registerStep3 = async (req, res) => {
   }
 };
 
+const validateUsername = async (req, res) => {
+  let { username } = req.body;
+  
+  try {
+    // Check if the username already exists in the users collection
+    const userSnapshot = await db.collection('users').where('username', '==', username).get();
+    
+    if (!userSnapshot.empty) {
+      // Username is taken
+      return success(res, { available: false }, messages.USERNAME_EXIST);
+    } else {
+      // Username is available
+      return success(res, { available: true }, messages.USERNAME_AVAILABLE);
+    }
+  } catch (err) {
+    return error(res, messages.USERNAME_AVAILABILITY_ERROR, [], 500);
+  }
+};
+
 const resendOtp = async (req, res) => {
-  const { email } = req.body;
+  let { email } = req.body;
+
+  email = email.toLowerCase().trim();
 
   try {
     // Check if the user exists in the temporary collection
@@ -497,7 +528,9 @@ const logout = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body; // input can be either email or username
+    let { email } = req.body; // input can be either email or username
+
+    email = email.toLowerCase().trim();
 
     const userRecord = await admin.auth().getUserByEmail(email);
 
@@ -522,7 +555,9 @@ const forgotPassword = async (req, res) => {
 };
 
 const resetPassword = async (req, res) => {
-  const { email, otp, password } = req.body;
+  let { email, otp, password } = req.body;
+
+  email = email.toLowerCase().trim();
 
   try {
     // Fetch OTP record from Firestore
@@ -684,5 +719,6 @@ module.exports = {
   resetPassword,
   googleSignIn,
   appleSignIn,
-  refreshAccessToken
+  refreshAccessToken,
+  validateUsername
 };

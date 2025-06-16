@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const messages = require('../constants/messages');
 const { success, error } = require('../model/response');
 const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/firebase_storage');
+const admin = require('firebase-admin');
 
 const usersList = async (req, res) => {
   try {
@@ -402,12 +403,75 @@ const searchUsers = async (req, res) => {
   }
 };
 
-// Helper function to handle complete user deletion from all systems
+// User self-delete function - requires password confirmation
+const userDelete = async (req, res) => {
+  console.log('=== UserDelete Started ===');
+  const { uid } = req.user; // Get user ID from authenticated request
+  const { password } = req.body; // Require password confirmation for security
+  
+  try {
+    console.log('User attempting to delete own account:', uid);
+    
+    // Step 1: Get user document from Firestore
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+      console.log('User document not found in Firestore');
+      return error(res, messages.USER_NOT_FOUND, [], 404);
+    }
+    
+    const userData = userDoc.data();
+    console.log('User data retrieved for deletion');
+    
+    // Step 2: Verify password for security confirmation
+    if (!userData.password) {
+      console.log('No password found for user - cannot verify');
+      return error(res, 'Cannot verify password for account deletion', [], 400);
+    }
+    
+    const isPasswordValid = await bcrypt.compare(password, userData.password);
+    if (!isPasswordValid) {
+      console.log('Invalid password provided for account deletion');
+      return error(res, 'Invalid password provided', [], 400);
+    }
+    
+    console.log('Password validated, proceeding with account deletion...');
+
+    // Step 3: Complete user deletion process
+    await performCompleteUserDeletion(uid, userData);
+
+    console.log('User self-deletion completed successfully');
+    return success(res, [], 'Account deleted successfully');
+    
+  } catch (err) {
+    console.error('=== UserDelete Error ===');
+    console.error('Error type:', err.constructor.name);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    
+    // Handle specific Firebase Auth errors
+    if (err.code === 'auth/user-not-found') {
+      console.log('User not found in Firebase Auth, continuing cleanup...');
+      try {
+        // Still try to clean up Firestore data
+        await db.collection('users').doc(uid).delete();
+        console.log('Firestore cleanup completed');
+        return success(res, [], 'Account deleted successfully');
+      } catch (cleanupErr) {
+        console.error('Cleanup error:', cleanupErr);
+        return error(res, 'Account deletion partially completed', [], 500);
+      }
+    }
+    
+    return error(res, err.message, [], 500);
+  }
+};
+
+// Helper function to perform complete user deletion
 const performCompleteUserDeletion = async (uid, userData) => {
   console.log('=== Starting complete user deletion process for UID:', uid);
   
   try {
-    // Delete user's profile picture from Firebase Storage if exists
+    // Step 1: Delete user's files from Firebase Storage
     if (userData.profilePicUrl) {
       console.log('Deleting profile picture from Firebase Storage...');
       try {
@@ -419,7 +483,6 @@ const performCompleteUserDeletion = async (uid, userData) => {
       }
     }
     
-    // Delete user's cover picture from Firebase Storage if exists
     if (userData.coverPicUrl) {
       console.log('Deleting cover picture from Firebase Storage...');
       try {
@@ -431,6 +494,7 @@ const performCompleteUserDeletion = async (uid, userData) => {
       }
     }
     
+    // Step 2: Delete all user-related data from Firestore collections using batch
     console.log('Deleting user data from Firestore...');
     const batch = db.batch();
     
@@ -441,6 +505,7 @@ const performCompleteUserDeletion = async (uid, userData) => {
     refreshTokensQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${refreshTokensQuery.size} refresh tokens to delete`);
     
     // Delete OTP verification records
     const otpQuery = await db.collection('otp_verifications')
@@ -449,6 +514,16 @@ const performCompleteUserDeletion = async (uid, userData) => {
     otpQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${otpQuery.size} OTP records to delete`);
+    
+    // Delete temp_users records
+    const tempUsersQuery = await db.collection('temp_users')
+      .where('email', '==', userData.email)
+      .get();
+    tempUsersQuery.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    console.log(`Found ${tempUsersQuery.size} temp user records to delete`);
     
     // Delete likes given by this user
     const likesGivenQuery = await db.collection('likes')
@@ -457,6 +532,7 @@ const performCompleteUserDeletion = async (uid, userData) => {
     likesGivenQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${likesGivenQuery.size} likes given to delete`);
     
     // Delete likes received by this user
     const likesReceivedQuery = await db.collection('likes')
@@ -465,6 +541,7 @@ const performCompleteUserDeletion = async (uid, userData) => {
     likesReceivedQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${likesReceivedQuery.size} likes received to delete`);
     
     // Delete followers relationships (where user is following others)
     const followingQuery = await db.collection('followers')
@@ -473,6 +550,7 @@ const performCompleteUserDeletion = async (uid, userData) => {
     followingQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${followingQuery.size} following relationships to delete`);
     
     // Delete followers relationships (where others are following user)
     const followersQuery = await db.collection('followers')
@@ -481,16 +559,36 @@ const performCompleteUserDeletion = async (uid, userData) => {
     followersQuery.forEach((doc) => {
       batch.delete(doc.ref);
     });
+    console.log(`Found ${followersQuery.size} follower relationships to delete`);
+    
+    // Delete user posts (if you have a posts collection)
+    const postsQuery = await db.collection('posts')
+      .where('userId', '==', uid)
+      .get();
+    postsQuery.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    console.log(`Found ${postsQuery.size} posts to delete`);
+    
+    // Delete user comments (if you have a comments collection)
+    const commentsQuery = await db.collection('comments')
+      .where('userId', '==', uid)
+      .get();
+    commentsQuery.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    console.log(`Found ${commentsQuery.size} comments to delete`);
     
     // Delete the user document from Firestore
     batch.delete(db.collection('users').doc(uid));
+    console.log('Added user document to batch delete');
     
     // Commit all Firestore deletions
     await batch.commit();
-    console.log('Firestore cleanup completed');
+    console.log('Firestore cleanup completed - all data deleted in batch');
     
+    // Step 3: Delete user from Firebase Authentication (do this last)
     console.log('Deleting user from Firebase Authentication...');
-    // Finally, delete the user from Firebase Authentication
     await admin.auth().deleteUser(uid);
     console.log('Firebase Auth user deleted');
     
@@ -552,55 +650,6 @@ const adminDelete = async (req, res) => {
     if (err.code === 'auth/user-not-found') {
       console.log('User not found in Firebase Auth, but cleanup may have completed');
       return success(res, {}, 'User deleted successfully');
-    }
-    
-    return error(res, err.message, [], 500);
-  }
-};
-
-// User self-delete function - requires password confirmation
-const userDelete = async (req, res) => {
-  console.log('=== UserDelete Started ===');
-  const { uid } = req.user; // Get user ID from authenticated request (ensures user can only delete their own account)
-  const { password } = req.body; // Require password confirmation for security
-  
-  try {
-    console.log('User attempting to delete own account:', uid);
-    
-    // Validate the user's password for security confirmation
-    const userDoc = await db.collection('users').doc(uid).get();
-    if (!userDoc.exists) {
-      console.log('User document not found in Firestore');
-      return error(res, messages.USER_NOT_FOUND, [], 404);
-    }
-    
-    const userData = userDoc.data();
-    
-    // Verify password - all users have passwords
-    const isPasswordValid = await bcrypt.compare(password, userData.password);
-    if (!isPasswordValid) {
-      console.log('Invalid password provided for account deletion');
-      return error(res, 'Invalid password provided', [], 400);
-    }
-    
-    console.log('Password validated, proceeding with account deletion...');
-
-    // Perform complete user deletion using helper function
-    await performCompleteUserDeletion(uid, userData);
-
-    console.log('User self-deletion completed successfully');
-    return success(res, [], 'Account deleted successfully');
-    
-  } catch (err) {
-    console.error('=== UserDelete Error ===');
-    console.error('Error type:', err.constructor.name);
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
-    
-    // Handle case where Firebase Auth user was already deleted
-    if (err.code === 'auth/user-not-found') {
-      console.log('User not found in Firebase Auth, but cleanup may have completed');
-      return success(res, [], 'Account deleted successfully');
     }
     
     return error(res, err.message, [], 500);

@@ -24,7 +24,6 @@ router.get('/view', authenticateJWT, viewProfile);
 router.post('/like', authenticateJWT, likeProfile);
 router.post('/follow', authenticateJWT, followProfile);
 router.get('/search', authenticateJWT, searchUsers);
-router.get('/self-delete', authenticateJWT, userDelete);
-
+router.delete('/delete-account', authenticateJWT, userDelete);
 
 module.exports = router;

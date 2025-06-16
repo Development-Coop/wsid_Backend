@@ -5,41 +5,105 @@ const { success, error } = require('../model/response');
 
 const createComment = async (req, res) => {
   const { postId, text, parentId } = req.body; // `parentId` is optional for nested comments
+  const userId = req.user?.uid;
 
+  console.log('Creating comment with data:', { postId, text, parentId, userId });
 
   // add code by karan for comment limit should be 1000
   //  messages.COMMENT_LENTH_VALIDATION this comes from message constants i will add this
-  if (!text && text.length > 1000) {
+  if (!text || text.length > 1000) {
     return error(res, messages.COMMENT_LENTH_VALIDATION, [], 400);
   }
 
   try {
+    // Get user's vote for this post to include with the comment
+    let userVote = null;
+    
+    console.log('Fetching user vote for postId:', postId, 'userId:', userId);
+    
+    try {
+      // Let's try a different approach - get all votes for this post and filter by user
+      const allPostVotes = await db.collection('votes').where('postId', '==', postId).get();
+      console.log('Total votes for this post:', allPostVotes.size);
+      
+      // Find the user's vote
+      const userVoteDoc = allPostVotes.docs.find(doc => doc.data().userId === userId);
+      
+      if (userVoteDoc) {
+        const voteData = userVoteDoc.data();
+        console.log('Found user vote data:', voteData);
+        
+        // Get the option details for the vote
+        console.log('Fetching post details for postId:', postId);
+        const postDoc = await db.collection('posts').doc(postId).get();
+        
+        if (postDoc.exists) {
+          const postData = postDoc.data();
+          console.log('Post found, now fetching option from options collection...');
+          
+          // Fetch the option from the separate options collection
+          const optionDoc = await db.collection('options').doc(voteData.optionId).get();
+          
+          if (optionDoc.exists) {
+            const optionData = optionDoc.data();
+            console.log('Found option data:', optionData);
+            
+            userVote = {
+              optionId: voteData.optionId,
+              optionText: optionData.text
+            };
+            console.log('UserVote created:', userVote);
+          } else {
+            console.log('Option document does not exist for optionId:', voteData.optionId);
+          }
+        } else {
+          console.log('Post document does not exist for postId:', postId);
+        }
+      } else {
+        console.log('No vote found for this user and post');
+        if (allPostVotes.size > 0) {
+          console.log('Sample vote for this post:', allPostVotes.docs[0].data());
+        }
+      }
+    } catch (voteError) {
+      console.error('Error fetching vote:', voteError);
+    }
+
     const newComment = {
       postId,
       text,
       parentId: parentId || null, // `null` for root comments
-      createdBy: req.user?.uid || null,
+      createdBy: userId,
       createdAt: new Date(),
       likes: [],
       dislikes: [],
       likesCount: 0,
       dislikesCount: 0,
       replies: [], // Only relevant for parent comments
+      userVote: userVote // Add the user's vote information
     };
+
+    console.log('Creating comment with data:', newComment);
 
     // Add the new comment
     const commentRef = await db.collection('comments').add(newComment);
+    console.log('Comment created with ID:', commentRef.id);
 
     // If this is a reply, update the parent comment's `replies` array
     if (parentId) {
+      console.log('Updating parent comment replies for parentId:', parentId);
       const parentCommentRef = db.collection('comments').doc(parentId);
       await parentCommentRef.update({
         replies: admin.firestore.FieldValue.arrayUnion(commentRef.id),
       });
+      console.log('Parent comment updated successfully');
     }
 
+    console.log('Comment creation completed successfully');
     return success(res, {}, messages.SUCCESS);
   } catch (err) {
+    console.error('Error creating comment:', err);
+    console.error('Error stack:', err.stack);
     return error(res, err.message, [], 500);
   }
 };
@@ -182,8 +246,16 @@ const getAllComment = async (req, res) => {
         dislikesCount: (commentData.dislikes || []).length,
         hasLiked,
         hasDisliked,
+        userVote: commentData.userVote || null, // Include vote information
         replies: await getNestedReplies(doc.id, loggedInUserId),
       };
+
+      console.log('Comment being returned:', {
+        id: comment.id,
+        text: comment.text,
+        userVote: comment.userVote,
+        createdBy: comment.createdBy?.name
+      });
 
       comments.push(comment);
     }
@@ -232,6 +304,7 @@ const getNestedReplies = async (parentId, loggedInUserId) => {
       dislikesCount: (replyData.dislikes || []).length,
       hasLiked,
       hasDisliked,
+      userVote: replyData.userVote || null, // Include vote information for replies too
       replies: await getNestedReplies(doc.id, loggedInUserId),
     };
 
@@ -272,19 +345,6 @@ const likeComment = async (req, res) => {
     }
 
     await commentRef.update(updates);
-    // if (comment.likes.includes(userId)) {
-    //   // Undo like
-    //   await commentRef.update({
-    //     likes: admin.firestore.FieldValue.arrayRemove(userId),
-    //     likesCount: admin.firestore.FieldValue.increment(-1),
-    //   });
-    // } else {
-    //   // Like the comment
-    //   await commentRef.update({
-    //     likes: admin.firestore.FieldValue.arrayUnion(userId),
-    //     likesCount: admin.firestore.FieldValue.increment(1),
-    //   });
-    // }
 
     return success(res, {}, messages.SUCCESS);
   } catch (err) {
@@ -323,19 +383,6 @@ const dislikeComment = async (req, res) => {
     }
 
     await commentRef.update(updates);
-    // if (comment.dislikes.includes(userId)) {
-    //   // Undo dislike
-    //   await commentRef.update({
-    //     dislikes: admin.firestore.FieldValue.arrayRemove(userId),
-    //     dislikesCount: admin.firestore.FieldValue.increment(-1),
-    //   });
-    // } else {
-    //   // Dislike the comment
-    //   await commentRef.update({
-    //     dislikes: admin.firestore.FieldValue.arrayUnion(userId),
-    //     dislikesCount: admin.firestore.FieldValue.increment(1),
-    //   });
-    // }
 
     return success(res, {}, messages.SUCCESS);
   } catch (err) {

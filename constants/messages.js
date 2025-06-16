@@ -5,7 +5,7 @@ module.exports = {
   INVALID_OTP_OR_EMAIL: 'Invalid OTP or email!',
   INVALID_OTP_OR_EXPIRED: 'Invalid OTP or expired!',
   MAX_OTP_REACHED: 'Max OTP resend attempts reached. Please try again later!',
-  EMAIL_ALREADY_EXIST: 'Email is already exist!',
+  EMAIL_ALREADY_EXIST: 'An account with this email already exists. Please sign in instead.',
   EMAIL_NOT_FOUND: 'Email not found!',
   EMAIL_VERIFIED: 'Email verified successfully.',
   EMAIL_ALREADY_VERIFIED: 'Email is already verified!',
