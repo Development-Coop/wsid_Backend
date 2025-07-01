@@ -128,7 +128,7 @@ const editCommentSchema = Joi.object({
 
 const createPostSchema = Joi.object({
   title: Joi.string().required(),
-  description: Joi.string().required(),
+  description: Joi.string().allow('').optional(),
   options: Joi.string().required()
 });
 

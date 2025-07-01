@@ -5,27 +5,31 @@ const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/fire
 
 const createPost = async (req, res) => {
   const { title, description, options: rawOptions } = req.body;
+  console.log(`[CREATE_POST] User: ${req.user?.uid}, Title: ${title}, Description: "${description}"`);
 
   try {
     let options = [];
     try {
       options = rawOptions ? JSON.parse(rawOptions) : [];
+      console.log(`[CREATE_POST] Parsed ${options.length} options`);
     } catch {
+      console.log('[CREATE_POST] Failed to parse options');
       return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
     }
 
     // Upload post images
     const postImages = req.files.filter(file => file.fieldname === 'postImages');
+    console.log(`[CREATE_POST] Uploading ${postImages.length} post images`);
     const postImageUrls = [];
     for (const image of postImages) {
       const imageUrl = await uploadFileToFirebase('post', image);
       postImageUrls.push(imageUrl);
     }
 
-    // Create the post
+    // Create the post - allow description to be empty string or null
     const newPost = {
       title,
-      description,
+      description: description || '', // Allow empty description
       images: postImageUrls,
       createdBy: req.user?.uid || null,
       createdAt: new Date(),
@@ -33,9 +37,11 @@ const createPost = async (req, res) => {
 
     const postRef = await db.collection('posts').add(newPost);
     const postId = postRef.id;
+    console.log(`[CREATE_POST] Created post with ID: ${postId}`);
 
     // Upload option images and create options collection
     if (options.length > 0) {
+      console.log(`[CREATE_POST] Processing ${options.length} options`);
       const optionPromises = options.map(async (option) => {
         const optionImage = req.files.find(file => file.fieldname === option.fileName);
         const optionImageUrl = optionImage ? await uploadFileToFirebase('post/options', optionImage) : null;
@@ -49,17 +55,22 @@ const createPost = async (req, res) => {
       });
 
       await Promise.all(optionPromises);
+      console.log(`[CREATE_POST] Successfully created all options`);
     }
 
     return success(res, { postId }, messages.SUCCESS);
   } catch (err) {
+    console.error(`[CREATE_POST] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
 
 const updatePost = async (req, res) => {
   const { id: postId } = req.params;
+  console.log(`[UPDATE_POST] Post ID: ${postId}, User: ${req.user?.uid}`);
+  
   if (Object.keys(req.body).length === 0 && !req.files) {
+    console.log('[UPDATE_POST] No updates provided');
     return success(res, { postId }, "No updates provided");
   }
   const { title, description, options: rawOptions, deleteImages: deleteImagesRaw, deleteOptions: deleteOptionsRaw } = req.body;
@@ -73,19 +84,23 @@ const updatePost = async (req, res) => {
       options = rawOptions ? JSON.parse(rawOptions) : [];
       deleteImages = deleteImagesRaw ? JSON.parse(deleteImagesRaw) : [];
       deleteOptions = deleteOptionsRaw ? JSON.parse(deleteOptionsRaw) : [];
+      console.log(`[UPDATE_POST] Parsed: ${options.length} options, ${deleteImages.length} images to delete, ${deleteOptions.length} options to delete`);
     } catch {
+      console.log('[UPDATE_POST] Failed to parse JSON data');
       return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
     }
 
     // Fetch the existing post
     const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
+      console.log(`[UPDATE_POST] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
     // Ensure the logged-in user is the one who created the post or is authorized to update it
     const existingPost = postDoc.data();
     if (existingPost.createdBy !== req.user?.uid) {
+      console.log(`[UPDATE_POST] Unauthorized access attempt by ${req.user?.uid} for post created by ${existingPost.createdBy}`);
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
@@ -97,10 +112,10 @@ const updatePost = async (req, res) => {
       postImageUrls.push(imageUrl); // Add new image URLs
     }
 
-    // Prepare and update post object
+    // Prepare and update post object - allow description to be empty
     const updatedPost = {
       title: title || existingPost.title,
-      description: description || existingPost.description,
+      description: description !== undefined ? description : existingPost.description, // Allow empty string
       images: postImageUrls,
       updatedAt: new Date(),
     };
@@ -174,25 +189,30 @@ const updatePost = async (req, res) => {
       }
     }
 
+    console.log(`[UPDATE_POST] Successfully updated post: ${postId}`);
     return success(res, { postId }, messages.SUCCESS);
   } catch (err) {
+    console.error(`[UPDATE_POST] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
 
 const deletePost = async (req, res) => {
   const { id: postId } = req.params;
+  console.log(`[DELETE_POST] Post ID: ${postId}, User: ${req.user?.uid}`);
 
   try {
     // Fetch the existing post
     const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
+      console.log(`[DELETE_POST] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
     // Ensure the logged-in user is the one who created the post or is authorized to update it
     const existingPost = postDoc.data();
     if (existingPost.createdBy !== req.user?.uid && req.user.role === "user") {
+      console.log(`[DELETE_POST] Unauthorized access attempt`);
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
@@ -200,22 +220,27 @@ const deletePost = async (req, res) => {
     const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
     const deleteOptionsPromises = optionsSnapshot.docs.map((doc) => doc.ref.delete());
     await Promise.all(deleteOptionsPromises);
+    console.log(`[DELETE_POST] Deleted ${optionsSnapshot.size} options`);
 
     // Delete votes associated with the post
     const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
     const deleteVotesPromises = votesSnapshot.docs.map((doc) => doc.ref.delete());
     await Promise.all(deleteVotesPromises);
+    console.log(`[DELETE_POST] Deleted ${votesSnapshot.size} votes`);
 
     // Delete comments associated with the post
     const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
     const deleteCommentsPromises = commentsSnapshot.docs.map((doc) => doc.ref.delete());
     await Promise.all(deleteCommentsPromises);
+    console.log(`[DELETE_POST] Deleted ${commentsSnapshot.size} comments`);
 
     // Delete the post
     await db.collection('posts').doc(postId).delete();
+    console.log(`[DELETE_POST] Successfully deleted post: ${postId}`);
 
     return success(res, { }, messages.SUCCESS);
   } catch (err) {
+    console.error(`[DELETE_POST] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
@@ -226,6 +251,7 @@ const getAllPosts = async (req, res) => {
     const uid = req.query.uid || req.user.uid;
     const listAll = req.query.all === 'true';
     const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
+    console.log(`[GET_ALL_POSTS] User: ${uid}, ListAll: ${listAll}, Page: ${page}, Limit: ${limit}, Search: "${search}"`);
 
     // Calculate the starting point for pagination
     const pageNumber = parseInt(page, 10);
@@ -303,6 +329,7 @@ const getAllPosts = async (req, res) => {
     });
 
     const posts = await Promise.all(postsPromises);
+    console.log(`[GET_ALL_POSTS] Retrieved ${posts.length} posts, Total: ${totalPosts}`);
 
     // Pagination metadata
     const totalPages = Math.ceil(totalPosts / pageSize);
@@ -317,17 +344,20 @@ const getAllPosts = async (req, res) => {
       },
     }, messages.SUCCESS);
   } catch (err) {
+    console.error(`[GET_ALL_POSTS] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
 
 const getPostById = async (req, res) => {
   const { id: postId } = req.params;
+  console.log(`[GET_POST_BY_ID] Post ID: ${postId}, User: ${req.user?.uid}`);
 
   try {
     // Fetch the existing post
     const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
+      console.log(`[GET_POST_BY_ID] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
     }
 
@@ -353,6 +383,7 @@ const getPostById = async (req, res) => {
 
     // Get options related to the post
     const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
+    console.log(`[GET_POST_BY_ID] Found ${optionsSnapshot.size} options for post`);
     // Check if the logged-in user has already voted for each option
     const options = await Promise.all(
       optionsSnapshot.docs.map(async (doc) => {
@@ -372,6 +403,7 @@ const getPostById = async (req, res) => {
       })
     );
 
+    console.log(`[GET_POST_BY_ID] Successfully retrieved post: ${postId}`);
     return success(
       res,
       {
@@ -382,6 +414,7 @@ const getPostById = async (req, res) => {
       messages.SUCCESS
     );
   } catch (err) {
+    console.error(`[GET_POST_BY_ID] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
@@ -389,9 +422,11 @@ const getPostById = async (req, res) => {
 const searchPost = async (req, res) => {
   try {
     const { query } = req.query;
+    console.log(`[SEARCH_POST] Query: "${query}"`);
 
     // Ensure query is provided and has a length of at least 3
     if (!query || query.length < 3) {
+      console.log('[SEARCH_POST] Query too short');
       return error(res, "Search query must be at least 3 characters long", [], 400);
     }
 
@@ -404,8 +439,11 @@ const searchPost = async (req, res) => {
     const postsSnapshot = await titleQuery.get();
 
     if (postsSnapshot.empty) {
+      console.log('[SEARCH_POST] No posts found');
       return success(res, [], messages.POSTS_NOT_FOUND);
     }
+
+    console.log(`[SEARCH_POST] Found ${postsSnapshot.size} matching posts`);
 
     // Process posts
     const posts = await Promise.all(
@@ -451,6 +489,7 @@ const searchPost = async (req, res) => {
 
     return success(res, posts, messages.SUCCESS);
   } catch (err) {
+    console.error(`[SEARCH_POST] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
@@ -464,6 +503,7 @@ const trendingPosts = async (req, res) => {
     const { page = 1, pageSize = 10 } = req.query;
     const pageValue = parseInt(page, 10);
     const pageSizeValue = parseInt(pageSize, 10);
+    console.log(`[TRENDING_POSTS] Page: ${pageValue}, PageSize: ${pageSizeValue}`);
 
     // Query Firestore for posts created in the last week
     const postsQuery = db
@@ -472,6 +512,7 @@ const trendingPosts = async (req, res) => {
     const postsSnapshot = await postsQuery.get();
 
     if (postsSnapshot.empty) {
+      console.log('[TRENDING_POSTS] No posts found in the last week');
       return success(res, {
         posts: [],
         pagination: {
@@ -482,6 +523,8 @@ const trendingPosts = async (req, res) => {
         },
       }, "No trending posts found.");
     }
+
+    console.log(`[TRENDING_POSTS] Processing ${postsSnapshot.size} posts from last week`);
 
     // Process posts with metrics
     const postsWithMetrics = await Promise.all(
@@ -531,6 +574,7 @@ const trendingPosts = async (req, res) => {
     const sortedPosts = postsWithMetrics.sort((a, b) => 
       b.commentsCount + b.votesCount - (a.commentsCount + a.votesCount)
     );
+    console.log(`[TRENDING_POSTS] Sorted posts by engagement score`);
 
     // Paginate results
     const totalPosts = sortedPosts.length;
@@ -539,6 +583,7 @@ const trendingPosts = async (req, res) => {
       (pageValue - 1) * pageSizeValue,
       pageValue * pageSizeValue
     );
+    console.log(`[TRENDING_POSTS] Returning ${paginatedPosts.length} posts for page ${pageValue}`);
 
     return success(res, {
       posts: paginatedPosts,
@@ -550,6 +595,7 @@ const trendingPosts = async (req, res) => {
       },
     }, "success");
   } catch (err) {
+    console.error(`[TRENDING_POSTS] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
