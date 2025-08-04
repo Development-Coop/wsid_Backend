@@ -10,7 +10,8 @@ const allowedOrigins = [
   "https://wsid.com", 
   "http://localhost:9000", 
   "http://localhost:9001",
-  "http://localhost:3000"
+  "http://localhost:3000",
+  "https://admin-wsid.netlify.app"
 ];
 
 app.use(
