@@ -1,11 +1,16 @@
-const db = require('../db/init');
-const messages = require('../constants/messages');
-const { success, error } = require('../model/response');
-const { uploadFileToFirebase, deleteFileFromFirebase } = require('../helper/firebase_storage');
+const db = require("../db/init");
+const messages = require("../constants/messages");
+const { success, error } = require("../model/response");
+const {
+  uploadFileToFirebase,
+  deleteFileFromFirebase,
+} = require("../helper/firebase_storage");
 
 const createPost = async (req, res) => {
   const { title, description, options: rawOptions } = req.body;
-  console.log(`[CREATE_POST] User: ${req.user?.uid}, Title: ${title}, Description: "${description}"`);
+  console.log(
+    `[CREATE_POST] User: ${req.user?.uid}, Title: ${title}, Description: "${description}"`
+  );
 
   try {
     let options = [];
@@ -13,29 +18,31 @@ const createPost = async (req, res) => {
       options = rawOptions ? JSON.parse(rawOptions) : [];
       console.log(`[CREATE_POST] Parsed ${options.length} options`);
     } catch {
-      console.log('[CREATE_POST] Failed to parse options');
+      console.log("[CREATE_POST] Failed to parse options");
       return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
     }
 
     // Upload post images
-    const postImages = req.files.filter(file => file.fieldname === 'postImages');
+    const postImages = req.files.filter(
+      (file) => file.fieldname === "postImages"
+    );
     console.log(`[CREATE_POST] Uploading ${postImages.length} post images`);
     const postImageUrls = [];
     for (const image of postImages) {
-      const imageUrl = await uploadFileToFirebase('post', image);
+      const imageUrl = await uploadFileToFirebase("post", image);
       postImageUrls.push(imageUrl);
     }
 
     // Create the post - allow description to be empty string or null
     const newPost = {
       title,
-      description: description || '', // Allow empty description
+      description: description || "", // Allow empty description
       images: postImageUrls,
       createdBy: req.user?.uid || null,
       createdAt: new Date(),
     };
 
-    const postRef = await db.collection('posts').add(newPost);
+    const postRef = await db.collection("posts").add(newPost);
     const postId = postRef.id;
     console.log(`[CREATE_POST] Created post with ID: ${postId}`);
 
@@ -43,15 +50,19 @@ const createPost = async (req, res) => {
     if (options.length > 0) {
       console.log(`[CREATE_POST] Processing ${options.length} options`);
       const optionPromises = options.map(async (option) => {
-        const optionImage = req.files.find(file => file.fieldname === option.fileName);
-        const optionImageUrl = optionImage ? await uploadFileToFirebase('post/options', optionImage) : null;
+        const optionImage = req.files.find(
+          (file) => file.fieldname === option.fileName
+        );
+        const optionImageUrl = optionImage
+          ? await uploadFileToFirebase("post/options", optionImage)
+          : null;
         const newOption = {
           postId,
           text: option.text,
           image: optionImageUrl,
           votesCount: 0,
         };
-        return db.collection('options').add(newOption);
+        return db.collection("options").add(newOption);
       });
 
       await Promise.all(optionPromises);
@@ -68,12 +79,18 @@ const createPost = async (req, res) => {
 const updatePost = async (req, res) => {
   const { id: postId } = req.params;
   console.log(`[UPDATE_POST] Post ID: ${postId}, User: ${req.user?.uid}`);
-  
+
   if (Object.keys(req.body).length === 0 && !req.files) {
-    console.log('[UPDATE_POST] No updates provided');
+    console.log("[UPDATE_POST] No updates provided");
     return success(res, { postId }, "No updates provided");
   }
-  const { title, description, options: rawOptions, deleteImages: deleteImagesRaw, deleteOptions: deleteOptionsRaw } = req.body;
+  const {
+    title,
+    description,
+    options: rawOptions,
+    deleteImages: deleteImagesRaw,
+    deleteOptions: deleteOptionsRaw,
+  } = req.body;
 
   try {
     let options = [];
@@ -84,14 +101,16 @@ const updatePost = async (req, res) => {
       options = rawOptions ? JSON.parse(rawOptions) : [];
       deleteImages = deleteImagesRaw ? JSON.parse(deleteImagesRaw) : [];
       deleteOptions = deleteOptionsRaw ? JSON.parse(deleteOptionsRaw) : [];
-      console.log(`[UPDATE_POST] Parsed: ${options.length} options, ${deleteImages.length} images to delete, ${deleteOptions.length} options to delete`);
+      console.log(
+        `[UPDATE_POST] Parsed: ${options.length} options, ${deleteImages.length} images to delete, ${deleteOptions.length} options to delete`
+      );
     } catch {
-      console.log('[UPDATE_POST] Failed to parse JSON data');
+      console.log("[UPDATE_POST] Failed to parse JSON data");
       return error(res, messages.INVALID_OPTIONS_FORMAT, [], 400);
     }
 
     // Fetch the existing post
-    const postDoc = await db.collection('posts').doc(postId).get();
+    const postDoc = await db.collection("posts").doc(postId).get();
     if (!postDoc.exists) {
       console.log(`[UPDATE_POST] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
@@ -100,52 +119,69 @@ const updatePost = async (req, res) => {
     // Ensure the logged-in user is the one who created the post or is authorized to update it
     const existingPost = postDoc.data();
     if (existingPost.createdBy !== req.user?.uid) {
-      console.log(`[UPDATE_POST] Unauthorized access attempt by ${req.user?.uid} for post created by ${existingPost.createdBy}`);
+      console.log(
+        `[UPDATE_POST] Unauthorized access attempt by ${req.user?.uid} for post created by ${existingPost.createdBy}`
+      );
       return error(res, messages.UNAUTHORISED_ACCESS, [], 403);
     }
 
     // Handle updating or adding post images
-    const postImages = req.files.filter(file => file.fieldname === 'postImages');
+    const postImages = req.files.filter(
+      (file) => file.fieldname === "postImages"
+    );
     const postImageUrls = [...existingPost.images]; // Start with existing images
     for (const image of postImages) {
-      const imageUrl = await uploadFileToFirebase('post', image);
+      const imageUrl = await uploadFileToFirebase("post", image);
       postImageUrls.push(imageUrl); // Add new image URLs
     }
 
     // Prepare and update post object - allow description to be empty
     const updatedPost = {
       title: title || existingPost.title,
-      description: description !== undefined ? description : existingPost.description, // Allow empty string
+      description:
+        description !== undefined ? description : existingPost.description, // Allow empty string
       images: postImageUrls,
       updatedAt: new Date(),
     };
-    await db.collection('posts').doc(postId).update(updatedPost);
+    await db.collection("posts").doc(postId).update(updatedPost);
 
     // Delete post images specified in the request body
     if (deleteImages.length > 0) {
       for (const imageUrl of deleteImages) {
         await deleteFileFromFirebase(imageUrl); // Delete from Firebase Storage
-        existingPost.images = existingPost.images.filter(url => url !== imageUrl); // Remove from post
+        existingPost.images = existingPost.images.filter(
+          (url) => url !== imageUrl
+        ); // Remove from post
       }
     }
 
     // Handle updating or adding option images
     if (options.length > 0) {
       const updatePromises = options.map(async (option) => {
-        const optionImage = req.files.find(file => file.fieldname === option.fileName);
-        let optionImageUrl = ""
+        const optionImage = req.files.find(
+          (file) => file.fieldname === option.fileName
+        );
+        let optionImageUrl = "";
         if (optionImage) {
-          optionImageUrl = await uploadFileToFirebase('post/options', optionImage); // Replace or add new URL
+          optionImageUrl = await uploadFileToFirebase(
+            "post/options",
+            optionImage
+          ); // Replace or add new URL
         }
 
         if (option.id) {
           // Fetch the existing option document
-          const optionDoc = await db.collection('options').doc(option.id).get();
+          const optionDoc = await db.collection("options").doc(option.id).get();
           if (!optionDoc.exists) {
-            return error(res, `Option with ID ${option.id} does not exist.`, [], 500);
+            return error(
+              res,
+              `Option with ID ${option.id} does not exist.`,
+              [],
+              500
+            );
           }
           const existingOption = optionDoc.data();
-        
+
           if (optionImageUrl) {
             // If a new image is provided, delete the old image from Firebase Storage
             if (existingOption.image) {
@@ -157,10 +193,13 @@ const updatePost = async (req, res) => {
           }
 
           // Update existing option
-          return db.collection('options').doc(option.id).update({
-            text: option.text || existingOption.text,
-            image: optionImageUrl,
-          });
+          return db
+            .collection("options")
+            .doc(option.id)
+            .update({
+              text: option.text || existingOption.text,
+              image: optionImageUrl,
+            });
         } else {
           // Add new option
           const newOption = {
@@ -169,22 +208,22 @@ const updatePost = async (req, res) => {
             image: optionImageUrl,
             votesCount: 0,
           };
-          return db.collection('options').add(newOption);
+          return db.collection("options").add(newOption);
         }
-      })
+      });
       await Promise.all(updatePromises);
     }
 
     // Delete options specified in the request body
     if (deleteOptions.length > 0) {
       for (const optionId of deleteOptions) {
-        const optionDoc = await db.collection('options').doc(optionId).get();
+        const optionDoc = await db.collection("options").doc(optionId).get();
         if (optionDoc.exists) {
           const optionData = optionDoc.data();
           if (optionData.image) {
             await deleteFileFromFirebase(optionData.image); // Delete option image from Firebase Storage
           }
-          await db.collection('options').doc(optionId).delete(); // Delete option document
+          await db.collection("options").doc(optionId).delete(); // Delete option document
         }
       }
     }
@@ -203,7 +242,7 @@ const deletePost = async (req, res) => {
 
   try {
     // Fetch the existing post
-    const postDoc = await db.collection('posts').doc(postId).get();
+    const postDoc = await db.collection("posts").doc(postId).get();
     if (!postDoc.exists) {
       console.log(`[DELETE_POST] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
@@ -217,28 +256,43 @@ const deletePost = async (req, res) => {
     }
 
     // Delete options associated with the post
-    const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
-    const deleteOptionsPromises = optionsSnapshot.docs.map((doc) => doc.ref.delete());
+    const optionsSnapshot = await db
+      .collection("options")
+      .where("postId", "==", postId)
+      .get();
+    const deleteOptionsPromises = optionsSnapshot.docs.map((doc) =>
+      doc.ref.delete()
+    );
     await Promise.all(deleteOptionsPromises);
     console.log(`[DELETE_POST] Deleted ${optionsSnapshot.size} options`);
 
     // Delete votes associated with the post
-    const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
-    const deleteVotesPromises = votesSnapshot.docs.map((doc) => doc.ref.delete());
+    const votesSnapshot = await db
+      .collection("votes")
+      .where("postId", "==", postId)
+      .get();
+    const deleteVotesPromises = votesSnapshot.docs.map((doc) =>
+      doc.ref.delete()
+    );
     await Promise.all(deleteVotesPromises);
     console.log(`[DELETE_POST] Deleted ${votesSnapshot.size} votes`);
 
     // Delete comments associated with the post
-    const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
-    const deleteCommentsPromises = commentsSnapshot.docs.map((doc) => doc.ref.delete());
+    const commentsSnapshot = await db
+      .collection("comments")
+      .where("postId", "==", postId)
+      .get();
+    const deleteCommentsPromises = commentsSnapshot.docs.map((doc) =>
+      doc.ref.delete()
+    );
     await Promise.all(deleteCommentsPromises);
     console.log(`[DELETE_POST] Deleted ${commentsSnapshot.size} comments`);
 
     // Delete the post
-    await db.collection('posts').doc(postId).delete();
+    await db.collection("posts").doc(postId).delete();
     console.log(`[DELETE_POST] Successfully deleted post: ${postId}`);
 
-    return success(res, { }, messages.SUCCESS);
+    return success(res, {}, messages.SUCCESS);
   } catch (err) {
     console.error(`[DELETE_POST] Error:`, err.message);
     return error(res, err.message, [], 500);
@@ -249,9 +303,17 @@ const getAllPosts = async (req, res) => {
   try {
     // Extract query parameters
     const uid = req.query.uid || req.user.uid;
-    const listAll = req.query.all === 'true';
-    const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
-    console.log(`[GET_ALL_POSTS] User: ${uid}, ListAll: ${listAll}, Page: ${page}, Limit: ${limit}, Search: "${search}"`);
+    const listAll = req.query.all === "true";
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      order = "desc",
+      search,
+    } = req.query;
+    console.log(
+      `[GET_ALL_POSTS] User: ${uid}, ListAll: ${listAll}, Page: ${page}, Limit: ${limit}, Search: "${search}"`
+    );
 
     // Calculate the starting point for pagination
     const pageNumber = parseInt(page, 10);
@@ -260,25 +322,30 @@ const getAllPosts = async (req, res) => {
 
     let query;
     if (listAll) {
-      query = db.collection('posts').orderBy(sortBy, order);
+      query = db.collection("posts").orderBy(sortBy, order);
     } else {
-      query = db.collection('posts')
-                .where('createdBy', '==', uid || null)
-                .orderBy(sortBy, order);
+      query = db
+        .collection("posts")
+        .where("createdBy", "==", uid || null)
+        .orderBy(sortBy, order);
     }
 
     // Add search filter for title
     if (search) {
-      query = query.where('title', '>=', search).where('title', '<=', search + '\uf8ff');
+      query = query
+        .where("title", ">=", search)
+        .where("title", "<=", search + "\uf8ff");
     }
 
     // Fetch the total number of posts for pagination metadata
     let totalQuery = listAll
-      ? db.collection('posts')
-      : db.collection('posts').where('createdBy', '==', uid || null);
+      ? db.collection("posts")
+      : db.collection("posts").where("createdBy", "==", uid || null);
 
     if (search) {
-      totalQuery = totalQuery.where('title', '>=', search).where('title', '<=', search + '\uf8ff');
+      totalQuery = totalQuery
+        .where("title", ">=", search)
+        .where("title", "<=", search + "\uf8ff");
     }
 
     const totalSnapshot = await totalQuery.get();
@@ -293,27 +360,33 @@ const getAllPosts = async (req, res) => {
     const postsPromises = postsSnapshot.docs.map(async (doc) => {
       const post = doc.data();
       const postId = doc.id;
-    
+
       post.createdAt = post.createdAt?.toMillis() || null;
-    
-      const userDoc = await db.collection('users').doc(post.createdBy).get();
+
+      const userDoc = await db.collection("users").doc(post.createdBy).get();
       const user = userDoc.exists ? userDoc.data() : {};
-    
-      const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
+
+      const votesSnapshot = await db
+        .collection("votes")
+        .where("postId", "==", postId)
+        .get();
       const votesCount = votesSnapshot.size;
-    
-      const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+
+      const commentsSnapshot = await db
+        .collection("comments")
+        .where("postId", "==", postId)
+        .get();
       const commentsCount = commentsSnapshot.size;
-    
+
       const userVoteSnapshot = await db
-        .collection('votes')
-        .where('postId', '==', postId)
-        .where('userId', '==', uid)
+        .collection("votes")
+        .where("postId", "==", postId)
+        .where("userId", "==", uid)
         .limit(1)
         .get();
-    
+
       const hasVoted = !userVoteSnapshot.empty;
-    
+
       return {
         id: postId,
         ...post,
@@ -329,20 +402,26 @@ const getAllPosts = async (req, res) => {
     });
 
     const posts = await Promise.all(postsPromises);
-    console.log(`[GET_ALL_POSTS] Retrieved ${posts.length} posts, Total: ${totalPosts}`);
+    console.log(
+      `[GET_ALL_POSTS] Retrieved ${posts.length} posts, Total: ${totalPosts}`
+    );
 
     // Pagination metadata
     const totalPages = Math.ceil(totalPosts / pageSize);
 
-    return success(res, {
-      posts,
-      pagination: {
-        currentPage: pageNumber,
-        totalPages,
-        totalPosts,
-        pageSize,
+    return success(
+      res,
+      {
+        posts,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages,
+          totalPosts,
+          pageSize,
+        },
       },
-    }, messages.SUCCESS);
+      messages.SUCCESS
+    );
   } catch (err) {
     console.error(`[GET_ALL_POSTS] Error:`, err.message);
     return error(res, err.message, [], 500);
@@ -355,7 +434,7 @@ const getPostById = async (req, res) => {
 
   try {
     // Fetch the existing post
-    const postDoc = await db.collection('posts').doc(postId).get();
+    const postDoc = await db.collection("posts").doc(postId).get();
     if (!postDoc.exists) {
       console.log(`[GET_POST_BY_ID] Post not found: ${postId}`);
       return error(res, messages.POST_NOT_FOUND, [], 404);
@@ -372,7 +451,7 @@ const getPostById = async (req, res) => {
     };
 
     // Fetch user details
-    const userDoc = await db.collection('users').doc(post.createdBy).get();
+    const userDoc = await db.collection("users").doc(post.createdBy).get();
     const user = userDoc.exists
       ? {
           id: userDoc.id,
@@ -382,19 +461,25 @@ const getPostById = async (req, res) => {
       : null;
 
     // Get options related to the post
-    const optionsSnapshot = await db.collection('options').where('postId', '==', postId).get();
-    console.log(`[GET_POST_BY_ID] Found ${optionsSnapshot.size} options for post`);
+    const optionsSnapshot = await db
+      .collection("options")
+      .where("postId", "==", postId)
+      .get();
+    console.log(
+      `[GET_POST_BY_ID] Found ${optionsSnapshot.size} options for post`
+    );
     // Check if the logged-in user has already voted for each option
     const options = await Promise.all(
       optionsSnapshot.docs.map(async (doc) => {
         const option = doc.data();
-        const votesSnapshot = await db
-          .collection('votes')
-          .where('optionId', '==', doc.id)
-          .where('userId', '==', req.user?.uid)
+        const userVoteSnapshot = await db
+          .collection("votes")
+          .where("postId", "==", postId)
+          .where("userId", "==", req.user?.uid)
+          .limit(1)
           .get();
 
-        const hasVoted = !votesSnapshot.empty; // If a vote exists, the user has voted
+        const hasVoted = !userVoteSnapshot.empty;
         return {
           id: doc.id,
           ...option,
@@ -426,20 +511,25 @@ const searchPost = async (req, res) => {
 
     // Ensure query is provided and has a length of at least 3
     if (!query || query.length < 3) {
-      console.log('[SEARCH_POST] Query too short');
-      return error(res, "Search query must be at least 3 characters long", [], 400);
+      console.log("[SEARCH_POST] Query too short");
+      return error(
+        res,
+        "Search query must be at least 3 characters long",
+        [],
+        400
+      );
     }
 
     // Query Firestore for posts with matching titles
     const titleQuery = db
-      .collection('posts')
-      .where('title', '>=', query)
-      .where('title', '<=', query + '\uf8ff');
+      .collection("posts")
+      .where("title", ">=", query)
+      .where("title", "<=", query + "\uf8ff");
 
     const postsSnapshot = await titleQuery.get();
 
     if (postsSnapshot.empty) {
-      console.log('[SEARCH_POST] No posts found');
+      console.log("[SEARCH_POST] No posts found");
       return success(res, [], messages.POSTS_NOT_FOUND);
     }
 
@@ -460,7 +550,7 @@ const searchPost = async (req, res) => {
         };
 
         // Fetch user details
-        const userDoc = await db.collection('users').doc(post.createdBy).get();
+        const userDoc = await db.collection("users").doc(post.createdBy).get();
         const user = userDoc.exists
           ? {
               id: userDoc.id,
@@ -470,19 +560,35 @@ const searchPost = async (req, res) => {
           : null;
 
         // Fetch votes count
-        const votesSnapshot = await db.collection('votes').where('postId', '==', postId).get();
+        const votesSnapshot = await db
+          .collection("votes")
+          .where("postId", "==", postId)
+          .get();
         const votesCount = votesSnapshot.size;
 
         // Fetch comments count
-        const commentsSnapshot = await db.collection('comments').where('postId', '==', postId).get();
+        const commentsSnapshot = await db
+          .collection("comments")
+          .where("postId", "==", postId)
+          .get();
         const commentsCount = commentsSnapshot.size;
+
+        const userVoteSnapshot = await db
+          .collection("votes")
+          .where("postId", "==", postId)
+          .where("userId", "==", req.user?.uid)
+          .limit(1)
+          .get();
+
+        const hasVoted = !userVoteSnapshot.empty;
 
         // Combine post details
         return {
           ...formattedPost,
           user,
           votesCount,
-          commentsCount
+          commentsCount,
+          hasVoted,
         };
       })
     );
@@ -503,28 +609,37 @@ const trendingPosts = async (req, res) => {
     const { page = 1, pageSize = 10 } = req.query;
     const pageValue = parseInt(page, 10);
     const pageSizeValue = parseInt(pageSize, 10);
-    console.log(`[TRENDING_POSTS] Page: ${pageValue}, PageSize: ${pageSizeValue}`);
+    const uid = req.user?.uid; // Get current user ID
+    console.log(
+      `[TRENDING_POSTS] Page: ${pageValue}, PageSize: ${pageSizeValue}, User: ${uid}`
+    );
 
     // Query Firestore for posts created in the last week
     const postsQuery = db
-      .collection('posts')
-      .where('createdAt', '>=', oneWeekAgo);
+      .collection("posts")
+      .where("createdAt", ">=", oneWeekAgo);
     const postsSnapshot = await postsQuery.get();
 
     if (postsSnapshot.empty) {
-      console.log('[TRENDING_POSTS] No posts found in the last week');
-      return success(res, {
-        posts: [],
-        pagination: {
-          currentPage: pageValue,
-          totalPages: 0,
-          totalPosts: 0,
-          pageSize: pageSizeValue,
+      console.log("[TRENDING_POSTS] No posts found in the last week");
+      return success(
+        res,
+        {
+          posts: [],
+          pagination: {
+            currentPage: pageValue,
+            totalPages: 0,
+            totalPosts: 0,
+            pageSize: pageSizeValue,
+          },
         },
-      }, "No trending posts found.");
+        "No trending posts found."
+      );
     }
 
-    console.log(`[TRENDING_POSTS] Processing ${postsSnapshot.size} posts from last week`);
+    console.log(
+      `[TRENDING_POSTS] Processing ${postsSnapshot.size} posts from last week`
+    );
 
     // Process posts with metrics
     const postsWithMetrics = await Promise.all(
@@ -532,21 +647,24 @@ const trendingPosts = async (req, res) => {
         const postId = doc.id;
         const post = doc.data();
 
-        // Fetch comments count
+        // Fetch comments from the past week only
         const commentsSnapshot = await db
-          .collection('comments')
-          .where('postId', '==', postId)
+          .collection("comments")
+          .where("postId", "==", postId)
+          .where("createdAt", ">=", oneWeekAgo)
           .get();
         const commentsCount = commentsSnapshot.size;
 
+        // Fetch votes from the past week only
         const votesSnapshot = await db
-        .collection('votes')
-        .where('postId', '==', postId)
-        .get();
+          .collection("votes")
+          .where("postId", "==", postId)
+          .where("createdAt", ">=", oneWeekAgo)
+          .get();
         const votesCount = votesSnapshot.size;
 
         // Fetch user details
-        const userDoc = await db.collection('users').doc(post.createdBy).get();
+        const userDoc = await db.collection("users").doc(post.createdBy).get();
         const user = userDoc.exists
           ? {
               id: userDoc.id,
@@ -554,6 +672,16 @@ const trendingPosts = async (req, res) => {
               profilePicUrl: userDoc.data().profilePicUrl || null,
             }
           : null;
+
+        // Check if current user has voted on this post
+        const userVoteSnapshot = await db
+          .collection("votes")
+          .where("postId", "==", postId)
+          .where("userId", "==", uid)
+          .limit(1)
+          .get();
+
+        const hasVoted = !userVoteSnapshot.empty;
 
         // Return post with metrics
         return {
@@ -566,46 +694,84 @@ const trendingPosts = async (req, res) => {
           user,
           votesCount,
           commentsCount,
+          hasVoted,
+          engagementScore: commentsCount + votesCount, // Add engagement score for easier sorting
         };
       })
     );
 
-    // Sort posts by combined metric (comments + votes) in descending order
-    const sortedPosts = postsWithMetrics.sort((a, b) => 
-      b.commentsCount + b.votesCount - (a.commentsCount + a.votesCount)
+    // Sort posts by engagement score (descending), then by createdAt (descending) as tiebreaker
+    const sortedPosts = postsWithMetrics.sort((a, b) => {
+      // First, compare by engagement score
+      const engagementDiff = b.engagementScore - a.engagementScore;
+      if (engagementDiff !== 0) {
+        return engagementDiff;
+      }
+      // If engagement is the same, sort by creation time (newest first)
+      return b.createdAt - a.createdAt;
+    });
+
+    // Add debugging logs
+    console.log("[TRENDING_POSTS] First 3 sorted posts:");
+    sortedPosts.slice(0, 3).forEach((post, index) => {
+      console.log(
+        `${index + 1}. ID: ${post.id}, Engagement: ${
+          post.engagementScore
+        }, Created: ${new Date(post.createdAt).toISOString()}`
+      );
+    });
+
+    console.log(
+      `[TRENDING_POSTS] Sorted posts by engagement score with time tiebreaker`
     );
-    console.log(`[TRENDING_POSTS] Sorted posts by engagement score`);
 
     // Paginate results
     const totalPosts = sortedPosts.length;
     const totalPages = Math.ceil(totalPosts / pageSizeValue);
-    const paginatedPosts = sortedPosts.slice(
-      (pageValue - 1) * pageSizeValue,
-      pageValue * pageSizeValue
-    );
-    console.log(`[TRENDING_POSTS] Returning ${paginatedPosts.length} posts for page ${pageValue}`);
+    const startIndex = (pageValue - 1) * pageSizeValue;
+    const endIndex = pageValue * pageSizeValue;
 
-    return success(res, {
-      posts: paginatedPosts,
-      pagination: {
-        currentPage: pageValue,
-        totalPages,
-        totalPosts,
-        pageSize: pageSizeValue,
+    console.log(
+      `[TRENDING_POSTS] Pagination: startIndex=${startIndex}, endIndex=${endIndex}`
+    );
+
+    const paginatedPosts = sortedPosts.slice(startIndex, endIndex);
+
+    // Log the paginated results
+    console.log("[TRENDING_POSTS] Paginated posts:");
+    paginatedPosts.forEach((post, index) => {
+      console.log(
+        `${startIndex + index + 1}. ID: ${post.id}, Engagement: ${
+          post.engagementScore
+        }, Created: ${new Date(post.createdAt).toISOString()}`
+      );
+    });
+
+    return success(
+      res,
+      {
+        posts: paginatedPosts,
+        pagination: {
+          currentPage: pageValue,
+          totalPages,
+          totalPosts,
+          pageSize: pageSizeValue,
+        },
       },
-    }, "success");
+      "success"
+    );
   } catch (err) {
     console.error(`[TRENDING_POSTS] Error:`, err.message);
     return error(res, err.message, [], 500);
   }
 };
 
-module.exports = { 
+module.exports = {
   createPost,
   getAllPosts,
   getPostById,
   updatePost,
   deletePost,
   searchPost,
-  trendingPosts
+  trendingPosts,
 };
