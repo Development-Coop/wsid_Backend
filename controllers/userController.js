@@ -7,7 +7,15 @@ const admin = require('firebase-admin');
 
 const usersList = async (req, res) => {
   try {
+    if (!req.user) {
+      return error(res, 'User not authenticated', [], 401);
+    }
+    
     const { email, role } = req.user;
+    
+    if (!email) {
+      return error(res, 'User email not found', [], 400);
+    }
     const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
 
     const limitValue = parseInt(limit, 10);
