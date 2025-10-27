@@ -7,35 +7,46 @@ const admin = require('firebase-admin');
 
 const usersList = async (req, res) => {
   try {
+    console.log('[USERS_LIST] Starting request');
+    console.log('[USERS_LIST] req.user:', JSON.stringify(req.user));
+    console.log('[USERS_LIST] req.query:', JSON.stringify(req.query));
+    
     if (!req.user) {
+      console.log('[USERS_LIST] ERROR: req.user is undefined');
       return error(res, 'User not authenticated', [], 401);
     }
     
     const { email, role } = req.user;
+    console.log('[USERS_LIST] email:', email, 'role:', role);
     
     if (!email) {
+      console.log('[USERS_LIST] ERROR: email is undefined');
       return error(res, 'User email not found', [], 400);
     }
+    
     const { page = 1, limit = 10, sortBy = 'createdAt', order = 'desc', search } = req.query;
 
     const limitValue = parseInt(limit, 10);
     const pageValue = parseInt(page, 10);
-
-    // Calculate the starting point for pagination
     const offset = (pageValue - 1) * limitValue;
 
+    console.log('[USERS_LIST] Query params:', { page: pageValue, limit: limitValue, sortBy, order, search });
+
     // Base query excluding the current user
+    console.log('[USERS_LIST] Creating base query, excluding email:', email);
     let baseQuery = db.collection('users').where('email', '!=', email);
 
     // Apply the status filter conditionally
     if (role === 'user') {
+      console.log('[USERS_LIST] Adding status filter for user role');
       baseQuery = baseQuery.where('status', '==', true);
     }
 
-    // If a search query is provided, fetch matching users by name, email, or username
     let searchResults = [];
     let totalUsers = 0;
+    
     if (search) {
+      console.log('[USERS_LIST] Executing search queries for:', search);
       const searchPromises = [
         baseQuery.where('name', '>=', search).where('name', '<=', search + '\uf8ff').get(),
         baseQuery.where('email', '>=', search).where('email', '<=', search + '\uf8ff').get(),
@@ -43,6 +54,8 @@ const usersList = async (req, res) => {
       ];
 
       const snapshots = await Promise.all(searchPromises);
+      console.log('[USERS_LIST] Search snapshots received:', snapshots.map(s => s.size));
+      
       snapshots.forEach((snapshot) => {
         snapshot.forEach((doc) => {
           const userData = doc.data();
@@ -52,7 +65,6 @@ const usersList = async (req, res) => {
         });
       });
 
-      // Sort results based on `sortBy` and `order`
       searchResults.sort((a, b) => {
         const aValue = a[sortBy];
         const bValue = b[sortBy];
@@ -60,25 +72,31 @@ const usersList = async (req, res) => {
         return aValue < bValue ? 1 : -1;
       });
       totalUsers = searchResults.length;
+      console.log('[USERS_LIST] Search results:', totalUsers);
     } else {
+      console.log('[USERS_LIST] Getting total users count');
       const totalUsersSnapshot = await baseQuery.get();
       totalUsers = totalUsersSnapshot.size;
+      console.log('[USERS_LIST] Total users:', totalUsers);
 
-      // No search filter; fetch paginated users
+      console.log('[USERS_LIST] Fetching paginated users');
       const userSnapshot = await baseQuery
         .orderBy(sortBy, order)
         .offset(offset)
         .limit(limitValue)
         .get();
+      
+      console.log('[USERS_LIST] Retrieved users:', userSnapshot.size);
 
       userSnapshot.forEach((doc) => {
         searchResults.push({ id: doc.id, ...doc.data() });
       });
     }
 
-    // Calculate pagination details
     const totalPages = Math.ceil(totalUsers / limitValue);
     const paginatedResults = search ? searchResults.slice(offset, offset + limitValue) : searchResults;
+
+    console.log('[USERS_LIST] Returning', paginatedResults.length, 'users');
 
     return success(
       res,
@@ -101,6 +119,9 @@ const usersList = async (req, res) => {
       messages.SUCCESS
     );
   } catch (err) {
+    console.error('[USERS_LIST] ERROR:', err);
+    console.error('[USERS_LIST] ERROR Stack:', err.stack);
+    console.error('[USERS_LIST] ERROR Message:', err.message);
     return error(res, err.message, [], 500);
   }
 };
